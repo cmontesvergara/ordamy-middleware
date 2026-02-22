@@ -3,6 +3,7 @@ const ssoService = require("../services/sso.service");
 const ssoAuthMiddleware = require("../middlewares/ssoAuth.middleware");
 const { APP_ID, COOKIE_NAME } = require("../config/env");
 
+
 const router = express.Router();
 
 /**
@@ -45,6 +46,7 @@ router.post("/exchange", async (req, res) => {
                 name: ssoResponse.tenant.name,
                 slug: ssoResponse.tenant.slug,
                 role: ssoResponse.tenant.role,
+                permissions: ssoResponse.tenant.permissions,
             },
             expiresAt: ssoResponse.expiresAt,
         });
