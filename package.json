@@ -1,0 +1,29 @@
+{
+    "name": "ordamy-middleware",
+    "version": "1.0.0",
+    "main": "src/server.js",
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "npx nodemon src/server.js",
+        "prisma:generate": "npx prisma generate",
+        "prisma:migrate": "npx prisma migrate dev",
+        "prisma:studio": "npx prisma studio",
+        "seed": "node src/prisma/seed.js"
+    },
+    "keywords": [],
+    "author": "BigSo",
+    "license": "ISC",
+    "description": "Ordamy business middleware — federated with BigSo SSO",
+    "dependencies": {
+        "@prisma/client": "^6.5.0",
+        "axios": "^1.13.5",
+        "cookie-parser": "^1.4.7",
+        "cors": "^2.8.6",
+        "dotenv": "^17.3.1",
+        "express": "^5.2.1"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.0",
+        "prisma": "^6.5.0"
+    }
+}

@@ -1,0 +1,37 @@
+const app = require("./app");
+const { PORT, APP_ID, FRONTEND_URL, SSO_BACKEND_URL, COOKIE_NAME, NODE_ENV } = require("./config/env");
+
+app.listen(PORT, () => {
+    console.log("");
+    console.log("🚀 ========================================");
+    console.log("   Ordamy Middleware Started");
+    console.log("   ========================================");
+    console.log(`   App ID:       ${APP_ID}`);
+    console.log(`   Port:         ${PORT}`);
+    console.log(`   Frontend:     ${FRONTEND_URL}`);
+    console.log(`   SSO Backend:  ${SSO_BACKEND_URL}`);
+    console.log(`   Cookie Name:  ${COOKIE_NAME}`);
+    console.log(`   Environment:  ${NODE_ENV}`);
+    console.log("   ========================================");
+    console.log("");
+    console.log("   SSO Endpoints:");
+    console.log("   POST   /api/auth/exchange");
+    console.log("   GET    /api/auth/session");
+    console.log("   POST   /api/auth/logout");
+    console.log("   GET    /api/sso/resources");
+    console.log("");
+    console.log("   Business Endpoints:");
+    console.log("   /api/customers   (CRUD)");
+    console.log("   /api/products    (CRUD)");
+    console.log("   /api/orders      (CRUD + items + payments)");
+    console.log("   /api/expenses    (CRUD)");
+    console.log("   /api/accounts    (read + transactions)");
+    console.log("   /api/payments    (CRUD)");
+    console.log("   /api/settings    (payment methods, categories, suppliers, tax, financial)");
+    console.log("   /api/reports     (monthly, daily, portfolio)");
+    console.log("");
+    console.log("   GET    /health");
+    console.log("");
+    console.log("   Ready to accept connections! 🎉");
+    console.log("");
+});
