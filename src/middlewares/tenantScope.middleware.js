@@ -1,9 +1,9 @@
-const { PrismaClient } = require("@prisma/client");
+const prisma = require("../config/prisma");
 
 /**
  * Middleware to inject tenantId scoping into Prisma queries.
  * Uses Prisma Client Extensions to automatically filter by tenant.
- * 
+ *
  * Requires req.tenant.tenantId to be set by ssoAuth middleware.
  */
 function tenantScope(req, res, next) {
@@ -14,7 +14,7 @@ function tenantScope(req, res, next) {
     const tenantId = req.tenant.tenantId;
 
     // Create a scoped Prisma client that auto-filters by tenantId
-    const prisma = new PrismaClient().$extends({
+    req.prisma = prisma.$extends({
         query: {
             $allModels: {
                 async findMany({ args, query }) {
@@ -26,7 +26,6 @@ function tenantScope(req, res, next) {
                     return query(args);
                 },
                 async findUnique({ args, query }) {
-                    // For findUnique we add tenantId validation after query
                     const result = await query(args);
                     if (result && result.tenantId && result.tenantId !== tenantId) {
                         return null;
@@ -38,11 +37,9 @@ function tenantScope(req, res, next) {
                     return query(args);
                 },
                 async update({ args, query }) {
-                    args.where = { ...args.where };
                     return query(args);
                 },
                 async delete({ args, query }) {
-                    args.where = { ...args.where };
                     return query(args);
                 },
                 async count({ args, query }) {
@@ -53,13 +50,15 @@ function tenantScope(req, res, next) {
                     args.where = { ...args.where, tenantId };
                     return query(args);
                 },
+                async groupBy({ args, query }) {
+                    args.where = { ...args.where, tenantId };
+                    return query(args);
+                },
             },
         },
     });
 
-    req.prisma = prisma;
     req.tenantId = tenantId;
-
     next();
 }
 
