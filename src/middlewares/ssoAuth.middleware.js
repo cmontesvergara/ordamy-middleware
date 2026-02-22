@@ -1,5 +1,6 @@
 const ssoService = require("../services/sso.service");
 const { COOKIE_NAME, APP_ID } = require("../config/env");
+const prisma = require("../config/prisma");
 
 /**
  * Express middleware to validate SSO sessions based on cookies.
@@ -21,9 +22,26 @@ async function ssoAuthMiddleware(req, res, next) {
             return res.status(401).json({ error: "Session expired or invalid" });
         }
 
+        // Sync Tenant locally to ensure foreign keys in Ordamy DB don't fail
+        const localTenant = await prisma.tenant.upsert({
+            where: { ssoId: session.tenant.tenantId },
+            update: {
+                name: session.tenant.name,
+                slug: session.tenant.slug
+            },
+            create: {
+                ssoId: session.tenant.tenantId,
+                name: session.tenant.name,
+                slug: session.tenant.slug
+            }
+        });
+
         // Attach data to request
         req.user = session.user;
-        req.tenant = session.tenant;
+        req.tenant = {
+            ...session.tenant,
+            localId: localTenant.id // Pass the local internal database ID
+        };
         req.ssoSession = session;
 
         next();

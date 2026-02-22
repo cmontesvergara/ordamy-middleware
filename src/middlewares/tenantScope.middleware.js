@@ -7,11 +7,11 @@ const prisma = require("../config/prisma");
  * Requires req.tenant.tenantId to be set by ssoAuth middleware.
  */
 function tenantScope(req, res, next) {
-    if (!req.tenant || !req.tenant.tenantId) {
+    if (!req.tenant || !req.tenant.localId) {
         return res.status(403).json({ error: "Tenant context not found" });
     }
 
-    const tenantId = req.tenant.tenantId;
+    const tenantId = req.tenant.localId;
 
     // Create a scoped Prisma client that auto-filters by tenantId
     req.prisma = prisma.$extends({
