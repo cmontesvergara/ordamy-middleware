@@ -167,8 +167,9 @@ model Order {
   discount           Decimal     @default(0) @db.Decimal(14, 2)
   total              Decimal     @default(0) @db.Decimal(14, 2)
   balance            Decimal     @default(0) @db.Decimal(14, 2)
-  status             OrderStatus @default(ACTIVE)
-  cancellationReason String?     @map("cancellation_reason")
+  status             OrderStatus        @default(ACTIVE)
+  operationalStatus  OperationalStatus  @default(PENDING) @map("operational_status")
+  cancellationReason String?            @map("cancellation_reason")
   sellerId           String      @map("seller_id") @db.VarChar(100)
   sellerName         String      @map("seller_name") @db.VarChar(200)
   notes              String?
@@ -365,6 +366,16 @@ enum OrderStatus {
   CANCELLED
 
   @@map("order_status")
+}
+
+enum OperationalStatus {
+  PENDING
+  APPROVED
+  IN_PRODUCTION
+  PRODUCED
+  DELIVERED
+
+  @@map("operational_status")
 }
 
 enum CategoryType {

@@ -231,5 +231,67 @@ router.put("/:id/cancel", rbac("orders", "update"), async (req, res) => {
         res.status(500).json({ error: "Failed to cancel order" });
     }
 });
+/**
+ * PUT /api/orders/:id/operational-status
+ * Update operational status (production tracking)
+ */
+const OPERATIONAL_FLOW = ["PENDING", "APPROVED", "IN_PRODUCTION", "PRODUCED", "DELIVERED"];
+
+router.put("/:id/operational-status", rbac("orders", "update"), async (req, res) => {
+    try {
+        const { operationalStatus } = req.body;
+
+        if (!operationalStatus || !OPERATIONAL_FLOW.includes(operationalStatus)) {
+            return res.status(400).json({ error: `Invalid status. Valid: ${OPERATIONAL_FLOW.join(", ")}` });
+        }
+
+        const order = await req.prisma.order.findFirst({
+            where: { id: req.params.id },
+        });
+
+        if (!order) {
+            return res.status(404).json({ error: "Order not found" });
+        }
+
+        if (order.status !== "ACTIVE") {
+            return res.status(400).json({ error: "Cannot change operational status of non-active orders" });
+        }
+
+        // Validate transition (only allow forward or backward by 1 step)
+        const currentIdx = OPERATIONAL_FLOW.indexOf(order.operationalStatus);
+        const nextIdx = OPERATIONAL_FLOW.indexOf(operationalStatus);
+
+        if (Math.abs(nextIdx - currentIdx) !== 1) {
+            return res.status(400).json({
+                error: `Cannot transition from ${order.operationalStatus} to ${operationalStatus}. Only adjacent transitions allowed.`,
+            });
+        }
+
+        const updated = await req.prisma.$transaction(async (tx) => {
+            const result = await tx.order.update({
+                where: { id: req.params.id },
+                data: { operationalStatus },
+            });
+
+            await tx.orderStatusHistory.create({
+                data: {
+                    tenantId: req.tenantId,
+                    orderId: req.params.id,
+                    fromStatus: order.status,
+                    toStatus: order.status,
+                    reason: `Operational: ${order.operationalStatus} → ${operationalStatus}`,
+                    changedBy: req.user.userId,
+                },
+            });
+
+            return result;
+        });
+
+        res.json({ success: true, data: updated });
+    } catch (error) {
+        console.error("❌ Error updating operational status:", error.message);
+        res.status(500).json({ error: "Failed to update operational status" });
+    }
+});
 
 module.exports = router;
