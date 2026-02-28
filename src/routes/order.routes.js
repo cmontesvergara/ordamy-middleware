@@ -9,12 +9,21 @@ const router = express.Router();
  */
 router.get("/", rbac("orders", "read"), async (req, res) => {
     try {
-        const { status, customerId, search, page = 1, limit = 20 } = req.query;
+        const { status, customerId, search, dateFrom, dateTo, page = 1, limit = 20 } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const where = {};
         if (status) where.status = status;
         if (customerId) where.customerId = customerId;
+        if (dateFrom || dateTo) {
+            where.orderDate = {};
+            if (dateFrom) where.orderDate.gte = new Date(dateFrom);
+            if (dateTo) {
+                const end = new Date(dateTo);
+                end.setHours(23, 59, 59, 999);
+                where.orderDate.lte = end;
+            }
+        }
         if (search) {
             where.OR = [
                 { number: isNaN(search) ? undefined : parseInt(search) },
@@ -95,6 +104,17 @@ router.post("/", rbac("orders", "create"), async (req, res) => {
 
         if (!customerId || items.length === 0) {
             return res.status(400).json({ error: "customerId and at least one item are required" });
+        }
+
+        // O2: Validate discount permission
+        if (discount > 0) {
+            const permissions = req.ssoSession?.tenant?.permissions || [];
+            const canDiscount = req.user?.isSuperAdmin || permissions.some(
+                (p) => p.resource === "orders" && p.action === "apply_discount"
+            );
+            if (!canDiscount) {
+                return res.status(403).json({ error: "You don't have permission to apply discounts" });
+            }
         }
 
         // Calculate totals

@@ -10,6 +10,7 @@ const APP_RESOURCES = [
     { resource: "orders", action: "create", description: "Crear órdenes" },
     { resource: "orders", action: "read", description: "Ver órdenes" },
     { resource: "orders", action: "update", description: "Editar órdenes (pagos, anulación)" },
+    { resource: "orders", action: "apply_discount", description: "Aplicar descuentos en órdenes" },
     { resource: "customers", action: "read", description: "Ver clientes" },
     { resource: "customers", action: "create", description: "Crear clientes" },
     { resource: "cashier", action: "read", description: "Ver caja" },

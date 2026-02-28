@@ -9,7 +9,7 @@ const router = express.Router();
  */
 router.get("/", rbac("expenses", "read"), async (req, res) => {
     try {
-        const { categoryId, supplierId, from, to, page = 1, limit = 20 } = req.query;
+        const { categoryId, supplierId, search, from, to, page = 1, limit = 20 } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const where = {};
@@ -18,7 +18,18 @@ router.get("/", rbac("expenses", "read"), async (req, res) => {
         if (from || to) {
             where.expenseDate = {};
             if (from) where.expenseDate.gte = new Date(from);
-            if (to) where.expenseDate.lte = new Date(to);
+            if (to) {
+                const end = new Date(to);
+                end.setHours(23, 59, 59, 999);
+                where.expenseDate.lte = end;
+            }
+        }
+        if (search) {
+            where.OR = [
+                { description: { contains: search, mode: "insensitive" } },
+                { invoiceNumber: { contains: search, mode: "insensitive" } },
+                { supplier: { name: { contains: search, mode: "insensitive" } } },
+            ];
         }
 
         const [expenses, total] = await Promise.all([
