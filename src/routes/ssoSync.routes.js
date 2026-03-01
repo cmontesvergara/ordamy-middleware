@@ -27,7 +27,8 @@ const APP_RESOURCES = [
     { resource: "reports", action: "read", description: "Generar reportes/cortes" },
     { resource: "reports", action: "print", description: "Imprimir reportes" },
     { resource: "settings", action: "read", description: "Ver configuración" },
-    { resource: "settings", action: "update", description: "Editar config (medios pago, categorías)" },
+    { resource: "settings", action: "update", description: "Crear/editar config (medios pago, categorías, impuestos, proveedores)" },
+    { resource: "settings", action: "delete", description: "Eliminar config (medios pago, categorías, impuestos, proveedores)" },
 ];
 
 /**
