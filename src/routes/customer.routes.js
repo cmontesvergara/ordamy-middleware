@@ -43,7 +43,7 @@ router.get("/", rbac("customers", "read"), async (req, res) => {
  */
 router.get("/:id", rbac("customers", "read"), async (req, res) => {
     try {
-        const { dateFrom, dateTo, status, page = 1, limit = 20 } = req.query;
+        const { dateFrom, dateTo, status, operationalStatus, page = 1, limit = 20 } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const customer = await req.prisma.customer.findFirst({
@@ -57,6 +57,7 @@ router.get("/:id", rbac("customers", "read"), async (req, res) => {
         // Build order filter
         const orderWhere = { customerId: req.params.id };
         if (status) orderWhere.status = status;
+        if (operationalStatus) orderWhere.operationalStatus = operationalStatus;
         if (dateFrom || dateTo) {
             orderWhere.orderDate = {};
             if (dateFrom) orderWhere.orderDate.gte = new Date(dateFrom);
@@ -76,7 +77,7 @@ router.get("/:id", rbac("customers", "read"), async (req, res) => {
                 orderBy: { orderDate: "desc" },
                 select: {
                     id: true, number: true, orderDate: true, total: true,
-                    balance: true, status: true, sellerName: true,
+                    balance: true, status: true, sellerName: true, operationalStatus: true,
                 },
             }),
             req.prisma.order.count({ where: orderWhere }),
