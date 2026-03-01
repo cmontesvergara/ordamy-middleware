@@ -5,51 +5,173 @@ const router = express.Router();
 
 /**
  * GET /api/reports/dashboard
- * Dashboard summary: total sales, total expenses, accounts summary, portfolio
+ * Statistics: KPIs, comparisons, top clients, expense breakdown, operational status
  */
 router.get("/dashboard", rbac("dashboard", "read"), async (req, res) => {
     try {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
         const [
-            totalSalesMonth,
-            totalExpensesMonth,
+            salesThisMonth,
+            salesLastMonth,
+            expensesThisMonth,
+            expensesLastMonth,
             activeOrdersCount,
             portfolioBalance,
             accounts,
+            customersThisMonth,
+            topClientsBySales,
+            topClientsWithDebt,
+            expensesByCategory,
+            ordersByOpStatus,
         ] = await Promise.all([
+            // Sales this month
             req.prisma.payment.aggregate({
                 where: { paymentDate: { gte: startOfMonth } },
                 _sum: { amount: true },
             }),
+            // Sales last month
+            req.prisma.payment.aggregate({
+                where: { paymentDate: { gte: startOfLastMonth, lte: endOfLastMonth } },
+                _sum: { amount: true },
+            }),
+            // Expenses this month
             req.prisma.expense.aggregate({
                 where: { expenseDate: { gte: startOfMonth } },
                 _sum: { amount: true },
             }),
-            req.prisma.order.count({
-                where: { status: "ACTIVE" },
+            // Expenses last month
+            req.prisma.expense.aggregate({
+                where: { expenseDate: { gte: startOfLastMonth, lte: endOfLastMonth } },
+                _sum: { amount: true },
             }),
+            // Active orders
+            req.prisma.order.count({ where: { status: "ACTIVE" } }),
+            // Portfolio balance
             req.prisma.order.aggregate({
                 where: { status: "ACTIVE", balance: { gt: 0 } },
                 _sum: { balance: true },
             }),
+            // Accounts
             req.prisma.account.findMany({
                 include: { paymentMethod: { select: { name: true } } },
             }),
+            // Distinct customers this month
+            req.prisma.order.findMany({
+                where: { orderDate: { gte: startOfMonth } },
+                select: { customerId: true },
+                distinct: ["customerId"],
+            }),
+            // Top 5 clients by total orders this month
+            req.prisma.order.groupBy({
+                by: ["customerId"],
+                where: { orderDate: { gte: startOfMonth }, status: { not: "CANCELLED" } },
+                _sum: { total: true },
+                _count: true,
+                orderBy: { _sum: { total: "desc" } },
+                take: 5,
+            }),
+            // Top 5 clients with most debt
+            req.prisma.order.groupBy({
+                by: ["customerId"],
+                where: { status: "ACTIVE", balance: { gt: 0 } },
+                _sum: { balance: true },
+                _count: true,
+                orderBy: { _sum: { balance: "desc" } },
+                take: 5,
+            }),
+            // Expenses by category this month
+            req.prisma.expense.groupBy({
+                by: ["categoryId"],
+                where: { expenseDate: { gte: startOfMonth } },
+                _sum: { amount: true },
+                _count: true,
+            }),
+            // Orders by operational status
+            req.prisma.order.groupBy({
+                by: ["operationalStatus"],
+                where: { status: "ACTIVE" },
+                _count: true,
+            }),
         ]);
+
+        // Resolve customer names for top lists
+        const allCustomerIds = [
+            ...topClientsBySales.map((c) => c.customerId),
+            ...topClientsWithDebt.map((c) => c.customerId),
+        ].filter(Boolean);
+        const uniqueCustomerIds = [...new Set(allCustomerIds)];
+        const customers = uniqueCustomerIds.length > 0
+            ? await req.prisma.customer.findMany({
+                where: { id: { in: uniqueCustomerIds } },
+                select: { id: true, name: true, identification: true },
+            })
+            : [];
+        const customerMap = Object.fromEntries(customers.map((c) => [c.id, c]));
+
+        // Resolve category names
+        const categoryIds = expensesByCategory.map((e) => e.categoryId).filter(Boolean);
+        const categories = categoryIds.length > 0
+            ? await req.prisma.category.findMany({
+                where: { id: { in: categoryIds } },
+                select: { id: true, name: true },
+            })
+            : [];
+        const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+        const sales = salesThisMonth._sum.amount || 0;
+        const expenses = expensesThisMonth._sum.amount || 0;
+        const salesPrev = salesLastMonth._sum.amount || 0;
+        const expensesPrev = expensesLastMonth._sum.amount || 0;
 
         res.json({
             success: true,
             data: {
-                salesThisMonth: totalSalesMonth._sum.amount || 0,
-                expensesThisMonth: totalExpensesMonth._sum.amount || 0,
+                // KPIs
+                salesThisMonth: sales,
+                salesLastMonth: salesPrev,
+                salesChange: salesPrev > 0 ? ((sales - salesPrev) / Number(salesPrev)) * 100 : null,
+                expensesThisMonth: expenses,
+                expensesLastMonth: expensesPrev,
+                expensesChange: expensesPrev > 0 ? ((expenses - expensesPrev) / Number(expensesPrev)) * 100 : null,
+                profitThisMonth: sales - expenses,
                 activeOrders: activeOrdersCount,
                 portfolioBalance: portfolioBalance._sum.balance || 0,
+                customersThisMonth: customersThisMonth.length,
+
+                // Accounts
                 accounts: accounts.map((a) => ({
                     id: a.id,
                     name: a.paymentMethod.name,
                     balance: a.balance,
+                })),
+
+                // Top clients
+                topClientsBySales: topClientsBySales.map((c) => ({
+                    ...customerMap[c.customerId],
+                    totalSales: c._sum.total || 0,
+                    orderCount: c._count,
+                })),
+                topClientsWithDebt: topClientsWithDebt.map((c) => ({
+                    ...customerMap[c.customerId],
+                    totalDebt: c._sum.balance || 0,
+                    orderCount: c._count,
+                })),
+
+                // Expense breakdown
+                expensesByCategory: expensesByCategory.map((e) => ({
+                    categoryName: categoryMap[e.categoryId]?.name || "Sin categoría",
+                    total: e._sum.amount || 0,
+                    count: e._count,
+                })),
+
+                // Operational status breakdown
+                ordersByOperationalStatus: ordersByOpStatus.map((o) => ({
+                    status: o.operationalStatus,
+                    count: o._count,
                 })),
             },
         });
