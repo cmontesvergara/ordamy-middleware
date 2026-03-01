@@ -148,4 +148,155 @@ router.get("/", rbac("orders", "read"), async (req, res) => {
     }
 });
 
+/**
+ * PUT /api/payments/:id
+ * Edit a payment (amount, method, notes)
+ */
+router.put("/:id", rbac("payments", "edit"), async (req, res) => {
+    try {
+        const { paymentMethodId, amount, notes } = req.body;
+
+        const payment = await req.prisma.payment.findFirst({
+            where: { id: req.params.id, tenantId: req.tenantId },
+            include: { order: true },
+        });
+
+        if (!payment) {
+            return res.status(404).json({ error: "Payment not found" });
+        }
+
+        if (payment.order.status === "CANCELLED") {
+            return res.status(400).json({ error: "Cannot edit payment on cancelled order" });
+        }
+
+        const oldAmount = parseFloat(payment.amount);
+        const newAmount = parseFloat(amount || oldAmount);
+        const diff = newAmount - oldAmount;
+
+        // Check new amount doesn't exceed available balance
+        const availableBalance = parseFloat(payment.order.balance) + oldAmount;
+        if (newAmount > availableBalance) {
+            return res.status(400).json({ error: "Amount exceeds available order balance" });
+        }
+
+        const result = await req.prisma.$transaction(async (tx) => {
+            const updated = await tx.payment.update({
+                where: { id: req.params.id },
+                data: {
+                    ...(paymentMethodId && { paymentMethodId }),
+                    ...(amount && { amount: newAmount }),
+                    ...(notes !== undefined && { notes }),
+                },
+                include: { paymentMethod: { select: { id: true, name: true } } },
+            });
+
+            // Recalculate order balance
+            if (diff !== 0) {
+                const newBalance = parseFloat(payment.order.balance) - diff;
+                const updateData = { balance: newBalance };
+
+                if (newBalance <= 0 && payment.order.status === "ACTIVE") {
+                    updateData.status = "COMPLETED";
+                } else if (newBalance > 0 && payment.order.status === "COMPLETED") {
+                    updateData.status = "ACTIVE";
+                }
+
+                await tx.order.update({
+                    where: { id: payment.orderId },
+                    data: updateData,
+                });
+
+                // Update account transaction
+                const account = await tx.account.findFirst({
+                    where: { tenantId: req.tenantId, paymentMethodId: payment.paymentMethodId },
+                });
+                if (account) {
+                    await tx.account.update({
+                        where: { id: account.id },
+                        data: { balance: { increment: diff } },
+                    });
+                }
+            }
+
+            return updated;
+        });
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error("❌ Error editing payment:", error.message);
+        res.status(500).json({ error: "Failed to edit payment" });
+    }
+});
+
+/**
+ * DELETE /api/payments/:id
+ * Delete a payment and reverse its effects on order balance and account
+ */
+router.delete("/:id", rbac("payments", "delete"), async (req, res) => {
+    try {
+        const payment = await req.prisma.payment.findFirst({
+            where: { id: req.params.id, tenantId: req.tenantId },
+            include: { order: true },
+        });
+
+        if (!payment) {
+            return res.status(404).json({ error: "Payment not found" });
+        }
+
+        if (payment.order.status === "CANCELLED") {
+            return res.status(400).json({ error: "Cannot delete payment on cancelled order" });
+        }
+
+        await req.prisma.$transaction(async (tx) => {
+            await tx.payment.delete({ where: { id: req.params.id } });
+
+            // Reverse order balance
+            const amt = parseFloat(payment.amount);
+            const newBalance = parseFloat(payment.order.balance) + amt;
+            const updateData = { balance: newBalance };
+
+            // If order was COMPLETED, revert to ACTIVE
+            if (payment.order.status === "COMPLETED") {
+                updateData.status = "ACTIVE";
+                await tx.orderStatusHistory.create({
+                    data: {
+                        tenantId: req.tenantId,
+                        orderId: payment.orderId,
+                        fromStatus: "COMPLETED",
+                        toStatus: "ACTIVE",
+                        reason: `Payment deleted (${amt})`,
+                        changedBy: req.user.userId,
+                    },
+                });
+            }
+
+            await tx.order.update({
+                where: { id: payment.orderId },
+                data: updateData,
+            });
+
+            // Reverse account transaction
+            const account = await tx.account.findFirst({
+                where: { tenantId: req.tenantId, paymentMethodId: payment.paymentMethodId },
+            });
+            if (account) {
+                await tx.account.update({
+                    where: { id: account.id },
+                    data: { balance: { decrement: amt } },
+                });
+            }
+
+            // Delete related transaction record
+            await tx.transaction.deleteMany({
+                where: { referenceId: req.params.id, referenceType: "PAYMENT" },
+            });
+        });
+
+        res.json({ success: true, message: "Payment deleted" });
+    } catch (error) {
+        console.error("❌ Error deleting payment:", error.message);
+        res.status(500).json({ error: "Failed to delete payment" });
+    }
+});
+
 module.exports = router;

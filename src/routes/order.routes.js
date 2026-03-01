@@ -87,6 +87,89 @@ router.get("/:id", rbac("orders", "read"), async (req, res) => {
 });
 
 /**
+ * PUT /api/orders/:id
+ * Edit order details (notes, dueDate, items)
+ */
+router.put("/:id", rbac("orders", "edit"), async (req, res) => {
+    try {
+        const { notes, dueDate, items } = req.body;
+
+        const order = await req.prisma.order.findFirst({
+            where: { id: req.params.id, tenantId: req.tenantId },
+            include: { items: true },
+        });
+
+        if (!order) {
+            return res.status(404).json({ error: "Order not found" });
+        }
+
+        if (order.status === "CANCELLED") {
+            return res.status(400).json({ error: "Cannot edit cancelled orders" });
+        }
+
+        const result = await req.prisma.$transaction(async (tx) => {
+            const updateData = {};
+            if (notes !== undefined) updateData.notes = notes;
+            if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+
+            // If items provided, replace them and recalculate totals
+            if (items && Array.isArray(items)) {
+                await tx.orderItem.deleteMany({ where: { orderId: req.params.id } });
+
+                let subtotal = 0;
+                for (const item of items) {
+                    const lineTotal = parseFloat(item.quantity) * parseFloat(item.unitPrice);
+                    subtotal += lineTotal;
+                    await tx.orderItem.create({
+                        data: {
+                            tenantId: req.tenantId,
+                            orderId: req.params.id,
+                            productId: item.productId || null,
+                            description: item.description,
+                            quantity: item.quantity,
+                            unitPrice: item.unitPrice,
+                            lineTotal,
+                        },
+                    });
+                }
+
+                const taxAmount = subtotal * parseFloat(order.taxRate);
+                const discount = parseFloat(order.discount);
+                const total = subtotal + taxAmount - discount;
+                const paidSoFar = parseFloat(order.total) - parseFloat(order.balance);
+                const newBalance = Math.max(0, total - paidSoFar);
+
+                updateData.subtotal = subtotal;
+                updateData.taxAmount = taxAmount;
+                updateData.total = total;
+                updateData.balance = newBalance;
+            }
+
+            return await tx.order.update({
+                where: { id: req.params.id },
+                data: updateData,
+                include: {
+                    customer: true,
+                    items: {
+                        include: { product: { select: { id: true, name: true } } },
+                        orderBy: { createdAt: "asc" },
+                    },
+                    payments: {
+                        include: { paymentMethod: { select: { id: true, name: true } } },
+                        orderBy: { paymentDate: "desc" },
+                    },
+                },
+            });
+        });
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        console.error("❌ Error editing order:", error.message);
+        res.status(500).json({ error: "Failed to edit order" });
+    }
+});
+
+/**
  * POST /api/orders
  * Create a new order with items
  */
