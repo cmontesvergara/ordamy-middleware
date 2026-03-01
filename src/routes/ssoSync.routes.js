@@ -22,6 +22,7 @@ const APP_RESOURCES = [
     { resource: "cashier", action: "update", description: "Operar en caja" },
     { resource: "expenses", action: "read", description: "Ver egresos" },
     { resource: "expenses", action: "create", description: "Crear egresos" },
+    { resource: "expenses", action: "edit", description: "Editar egresos" },
     { resource: "expenses", action: "delete", description: "Eliminar egresos" },
     { resource: "portfolio", action: "read", description: "Ver cartera" },
     { resource: "reports", action: "read", description: "Generar reportes/cortes" },

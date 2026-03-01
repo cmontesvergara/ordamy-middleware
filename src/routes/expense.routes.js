@@ -143,6 +143,51 @@ router.post("/", rbac("expenses", "create"), async (req, res) => {
 });
 
 /**
+ * PUT /api/expenses/:id
+ * Edit an expense
+ */
+router.put("/:id", rbac("expenses", "edit"), async (req, res) => {
+    try {
+        const { description, amount, categoryId, supplierId, paymentMethodId, invoiceNumber, expenseDate, notes } = req.body;
+
+        const expense = await req.prisma.expense.findFirst({
+            where: { id: req.params.id, tenantId: req.tenantId },
+        });
+
+        if (!expense) {
+            return res.status(404).json({ error: "Expense not found" });
+        }
+
+        const updated = await req.prisma.expense.update({
+            where: { id: req.params.id },
+            data: {
+                ...(description !== undefined && { description }),
+                ...(amount !== undefined && { amount: parseFloat(amount) }),
+                ...(categoryId !== undefined && { categoryId: categoryId || null }),
+                ...(supplierId !== undefined && { supplierId: supplierId || null }),
+                ...(paymentMethodId !== undefined && { paymentMethodId }),
+                ...(invoiceNumber !== undefined && { invoiceNumber }),
+                ...(expenseDate !== undefined && { expenseDate: expenseDate ? new Date(expenseDate) : new Date() }),
+                ...(notes !== undefined && { notes }),
+            },
+            include: {
+                category: { select: { id: true, name: true } },
+                supplier: { select: { id: true, name: true } },
+                paymentMethod: { select: { id: true, name: true } },
+            },
+        });
+
+        res.json({ success: true, data: updated });
+    } catch (error) {
+        if (error.code === "P2025") {
+            return res.status(404).json({ error: "Expense not found" });
+        }
+        console.error("❌ Error updating expense:", error.message);
+        res.status(500).json({ error: "Failed to update expense" });
+    }
+});
+
+/**
  * DELETE /api/expenses/:id
  */
 router.delete("/:id", rbac("expenses", "delete"), async (req, res) => {
