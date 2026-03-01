@@ -366,8 +366,8 @@ router.get("/monthly", rbac("reports", "read"), async (req, res) => {
         const categoryMap = {};
         categories.forEach((c) => { categoryMap[c.id] = c.name; });
 
-        const totalIncome = paymentsByMethod.reduce((sum, g) => sum + (g._sum.amount || 0), 0);
-        const totalExpenses = expensesByCategory.reduce((sum, g) => sum + (g._sum.amount || 0), 0);
+        const totalIncome = paymentsByMethod.reduce((sum, g) => sum + Number(g._sum.amount || 0), 0);
+        const totalExpenses = expensesByCategory.reduce((sum, g) => sum + Number(g._sum.amount || 0), 0);
 
         res.json({
             success: true,
@@ -379,21 +379,21 @@ router.get("/monthly", rbac("reports", "read"), async (req, res) => {
                 netIncome: totalIncome - totalExpenses,
                 ordersSummary: {
                     count: ordersSummary._count,
-                    total: ordersSummary._sum.total || 0,
+                    total: Number(ordersSummary._sum.total || 0),
                 },
                 byMethod: paymentsByMethod.map((g) => ({
                     name: methodMap[g.paymentMethodId] || "Sin medio",
-                    total: g._sum.amount || 0,
+                    total: Number(g._sum.amount || 0),
                     count: g._count,
                 })),
                 byCategory: expensesByCategory.map((g) => ({
                     name: categoryMap[g.categoryId] || "Sin categoría",
-                    total: g._sum.amount || 0,
+                    total: Number(g._sum.amount || 0),
                     count: g._count,
                 })),
                 expensesByMethod: expensesByMethod.map((g) => ({
                     name: methodMap[g.paymentMethodId] || "Sin medio",
-                    total: g._sum.amount || 0,
+                    total: Number(g._sum.amount || 0),
                     count: g._count,
                 })),
             },
