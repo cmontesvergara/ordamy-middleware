@@ -16,6 +16,8 @@ const APP_RESOURCES = [
     { resource: "payments", action: "delete", description: "Eliminar pagos registrados" },
     { resource: "customers", action: "read", description: "Ver clientes" },
     { resource: "customers", action: "create", description: "Crear clientes" },
+    { resource: "customers", action: "edit", description: "Editar datos de clientes" },
+    { resource: "customers", action: "delete", description: "Eliminar clientes" },
     { resource: "cashier", action: "read", description: "Ver caja" },
     { resource: "cashier", action: "update", description: "Operar en caja" },
     { resource: "expenses", action: "read", description: "Ver egresos" },

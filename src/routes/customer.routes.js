@@ -147,7 +147,7 @@ router.post("/", rbac("customers", "create"), async (req, res) => {
  * PUT /api/customers/:id
  * Update a customer
  */
-router.put("/:id", rbac("customers", "create"), async (req, res) => {
+router.put("/:id", rbac("customers", "edit"), async (req, res) => {
     try {
         const { name, phone, email, address, notes, isActive } = req.body;
 
@@ -163,6 +163,36 @@ router.put("/:id", rbac("customers", "create"), async (req, res) => {
         }
         console.error("❌ Error updating customer:", error.message);
         res.status(500).json({ error: "Failed to update customer" });
+    }
+});
+
+/**
+ * DELETE /api/customers/:id
+ * Delete a customer (only if no orders)
+ */
+router.delete("/:id", rbac("customers", "delete"), async (req, res) => {
+    try {
+        const orderCount = await req.prisma.order.count({
+            where: { customerId: req.params.id },
+        });
+
+        if (orderCount > 0) {
+            return res.status(400).json({
+                error: `No se puede eliminar: el cliente tiene ${orderCount} orden(es). Primero debe anular o eliminar sus órdenes.`,
+            });
+        }
+
+        await req.prisma.customer.delete({
+            where: { id: req.params.id },
+        });
+
+        res.json({ success: true, message: "Customer deleted" });
+    } catch (error) {
+        if (error.code === "P2025") {
+            return res.status(404).json({ error: "Customer not found" });
+        }
+        console.error("❌ Error deleting customer:", error.message);
+        res.status(500).json({ error: "Failed to delete customer" });
     }
 });
 
