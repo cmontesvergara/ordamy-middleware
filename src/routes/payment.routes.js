@@ -52,8 +52,8 @@ router.post("/", rbac("orders", "update"), async (req, res) => {
             const newBalance = parseFloat(order.balance) - parseFloat(amount);
             const updateData = { balance: newBalance };
 
-            // If fully paid, mark as COMPLETED
-            if (newBalance <= 0) {
+            // If fully paid AND delivered, mark as COMPLETED
+            if (newBalance <= 0 && order.operationalStatus === "DELIVERED") {
                 updateData.status = "COMPLETED";
 
                 await tx.orderStatusHistory.create({
@@ -62,7 +62,7 @@ router.post("/", rbac("orders", "update"), async (req, res) => {
                         orderId,
                         fromStatus: "ACTIVE",
                         toStatus: "COMPLETED",
-                        reason: "Fully paid",
+                        reason: "Fully paid and delivered",
                         changedBy: req.user.userId,
                     },
                 });
@@ -195,7 +195,7 @@ router.put("/:id", rbac("payments", "edit"), async (req, res) => {
                 const newBalance = parseFloat(payment.order.balance) - diff;
                 const updateData = { balance: newBalance };
 
-                if (newBalance <= 0 && payment.order.status === "ACTIVE") {
+                if (newBalance <= 0 && payment.order.status === "ACTIVE" && payment.order.operationalStatus === "DELIVERED") {
                     updateData.status = "COMPLETED";
                 } else if (newBalance > 0 && payment.order.status === "COMPLETED") {
                     updateData.status = "ACTIVE";

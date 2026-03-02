@@ -285,11 +285,23 @@ router.put("/:id/cancel", rbac("orders", "update"), async (req, res) => {
             return res.status(400).json({ error: "Only active orders can be cancelled" });
         }
 
+        // Check if order has payments — can't cancel with payments
+        const paymentCount = await req.prisma.payment.count({
+            where: { orderId: req.params.id },
+        });
+
+        if (paymentCount > 0) {
+            return res.status(400).json({
+                error: `No se puede cancelar: la orden tiene ${paymentCount} pago(s) registrado(s). Elimine los pagos primero.`,
+            });
+        }
+
         const updated = await req.prisma.$transaction(async (tx) => {
             const result = await tx.order.update({
                 where: { id: req.params.id },
                 data: {
                     status: "CANCELLED",
+                    balance: 0,
                     cancellationReason: reason,
                 },
             });
@@ -351,9 +363,16 @@ router.put("/:id/operational-status", rbac("orders", "update"), async (req, res)
         }
 
         const updated = await req.prisma.$transaction(async (tx) => {
+            const updateData = { operationalStatus };
+
+            // If delivered and fully paid, auto-complete
+            if (operationalStatus === "DELIVERED" && parseFloat(order.balance) <= 0) {
+                updateData.status = "COMPLETED";
+            }
+
             const result = await tx.order.update({
                 where: { id: req.params.id },
-                data: { operationalStatus },
+                data: updateData,
             });
 
             await tx.orderStatusHistory.create({
@@ -361,7 +380,7 @@ router.put("/:id/operational-status", rbac("orders", "update"), async (req, res)
                     tenantId: req.tenantId,
                     orderId: req.params.id,
                     fromStatus: order.status,
-                    toStatus: order.status,
+                    toStatus: updateData.status || order.status,
                     reason: `Operational: ${order.operationalStatus} → ${operationalStatus}`,
                     changedBy: req.user.userId,
                 },
