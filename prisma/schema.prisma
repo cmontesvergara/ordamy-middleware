@@ -181,7 +181,7 @@ model Order {
   items         OrderItem[]
   payments      Payment[]
   attachments   Attachment[]
-  statusHistory OrderStatusHistory[]
+  events        OrderEvent[]
 
   @@unique([tenantId, number])
   @@index([tenantId])
@@ -210,21 +210,24 @@ model OrderItem {
   @@map("order_items")
 }
 
-model OrderStatusHistory {
-  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String       @map("tenant_id") @db.Uuid
-  orderId    String       @map("order_id") @db.Uuid
-  fromStatus OrderStatus? @map("from_status")
-  toStatus   OrderStatus  @map("to_status")
-  reason     String?
-  changedBy  String       @map("changed_by") @db.VarChar(100)
-  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+model OrderEvent {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String         @map("tenant_id") @db.Uuid
+  orderId       String         @map("order_id") @db.Uuid
+  type          OrderEventType
+  description   String
+  fromStatus    OrderStatus?   @map("from_status")
+  toStatus      OrderStatus?   @map("to_status")
+  metadata      Json?
+  changedById   String         @map("changed_by_id") @db.VarChar(100)
+  changedByName String         @map("changed_by_name") @db.VarChar(200)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([orderId])
-  @@map("order_status_history")
+  @@map("order_events")
 }
 
 model Payment {
@@ -375,6 +378,14 @@ enum OperationalStatus {
   DELIVERED
 
   @@map("operational_status")
+}
+
+enum OrderEventType {
+  STATUS_CHANGE
+  PAYMENT_ADDED
+  PAYMENT_DELETED
+
+  @@map("order_event_type")
 }
 
 enum CategoryType {

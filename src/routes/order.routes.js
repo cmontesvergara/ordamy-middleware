@@ -71,7 +71,7 @@ router.get("/:id", rbac("orders", "read"), async (req, res) => {
                     orderBy: { paymentDate: "desc" },
                 },
                 attachments: { orderBy: { createdAt: "desc" } },
-                statusHistory: { orderBy: { createdAt: "desc" } },
+                events: { orderBy: { createdAt: "desc" } },
             },
         });
 
@@ -241,11 +241,14 @@ router.post("/", rbac("orders", "create"), async (req, res) => {
                             lineTotal: item.quantity * item.unitPrice,
                         })),
                     },
-                    statusHistory: {
+                    events: {
                         create: {
                             tenantId: req.tenantId,
+                            type: "STATUS_CHANGE",
+                            description: "Orden creada",
                             toStatus: "ACTIVE",
-                            changedBy: req.user.userId,
+                            changedById: req.user.userId,
+                            changedByName: `${req.user.firstName} ${req.user.lastName}`.trim() || req.user.email,
                         },
                     },
                 },
@@ -306,14 +309,17 @@ router.put("/:id/cancel", rbac("orders", "update"), async (req, res) => {
                 },
             });
 
-            await tx.orderStatusHistory.create({
+            await tx.orderEvent.create({
                 data: {
                     tenantId: req.tenantId,
                     orderId: req.params.id,
+                    type: "STATUS_CHANGE",
+                    description: "Orden anulada/cancelada",
                     fromStatus: "ACTIVE",
                     toStatus: "CANCELLED",
-                    reason,
-                    changedBy: req.user.userId,
+                    metadata: reason ? { reason } : null,
+                    changedById: req.user.userId,
+                    changedByName: `${req.user.firstName} ${req.user.lastName}`.trim() || req.user.email,
                 },
             });
 
@@ -375,14 +381,17 @@ router.put("/:id/operational-status", rbac("orders", "update"), async (req, res)
                 data: updateData,
             });
 
-            await tx.orderStatusHistory.create({
+            await tx.orderEvent.create({
                 data: {
                     tenantId: req.tenantId,
                     orderId: req.params.id,
+                    type: "STATUS_CHANGE",
+                    description: `Operación: ${order.operationalStatus} → ${operationalStatus}`,
                     fromStatus: order.status,
                     toStatus: updateData.status || order.status,
-                    reason: `Operational: ${order.operationalStatus} → ${operationalStatus}`,
-                    changedBy: req.user.userId,
+                    metadata: { fromOperational: order.operationalStatus, toOperational: operationalStatus },
+                    changedById: req.user.userId,
+                    changedByName: `${req.user.firstName} ${req.user.lastName}`.trim() || req.user.email,
                 },
             });
 

@@ -56,17 +56,32 @@ router.post("/", rbac("orders", "update"), async (req, res) => {
             if (newBalance <= 0 && order.operationalStatus === "DELIVERED") {
                 updateData.status = "COMPLETED";
 
-                await tx.orderStatusHistory.create({
+                await tx.orderEvent.create({
                     data: {
                         tenantId: req.tenantId,
                         orderId,
+                        type: "STATUS_CHANGE",
+                        description: "Orden completada (pagada y entregada)",
                         fromStatus: "ACTIVE",
                         toStatus: "COMPLETED",
-                        reason: "Fully paid and delivered",
-                        changedBy: req.user.userId,
+                        changedById: req.user.userId,
+                        changedByName: `${req.user.firstName} ${req.user.lastName}`.trim() || req.user.email,
                     },
                 });
             }
+
+            // Create Payment Event
+            await tx.orderEvent.create({
+                data: {
+                    tenantId: req.tenantId,
+                    orderId,
+                    type: "PAYMENT_ADDED",
+                    description: `Abono registrado por ${amount}`,
+                    metadata: { paymentId: payment.id, amount, paymentMethodId },
+                    changedById: req.user.userId,
+                    changedByName: `${req.user.firstName} ${req.user.lastName}`.trim() || req.user.email,
+                },
+            });
 
             await tx.order.update({
                 where: { id: orderId },
@@ -258,17 +273,32 @@ router.delete("/:id", rbac("payments", "delete"), async (req, res) => {
             // If order was COMPLETED, revert to ACTIVE
             if (payment.order.status === "COMPLETED") {
                 updateData.status = "ACTIVE";
-                await tx.orderStatusHistory.create({
+                await tx.orderEvent.create({
                     data: {
                         tenantId: req.tenantId,
                         orderId: payment.orderId,
+                        type: "STATUS_CHANGE",
+                        description: `Orden reabierta por abono eliminado (${amt})`,
                         fromStatus: "COMPLETED",
                         toStatus: "ACTIVE",
-                        reason: `Payment deleted (${amt})`,
-                        changedBy: req.user.userId,
+                        changedById: req.user.userId,
+                        changedByName: `${req.user.firstName} ${req.user.lastName}`.trim() || req.user.email,
                     },
                 });
             }
+
+            // Create Payment Deleted Event
+            await tx.orderEvent.create({
+                data: {
+                    tenantId: req.tenantId,
+                    orderId: payment.orderId,
+                    type: "PAYMENT_DELETED",
+                    description: `Abono eliminado por ${amt}`,
+                    metadata: { paymentId: payment.id, amount: amt },
+                    changedById: req.user.userId,
+                    changedByName: `${req.user.firstName} ${req.user.lastName}`.trim() || req.user.email,
+                },
+            });
 
             await tx.order.update({
                 where: { id: payment.orderId },
