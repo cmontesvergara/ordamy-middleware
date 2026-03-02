@@ -7,7 +7,7 @@ const router = express.Router();
  * GET /api/products
  * List products for the current tenant
  */
-router.get("/", rbac("settings", "read"), async (req, res) => {
+router.get("/", rbac("products", "read"), async (req, res) => {
     try {
         const { search, page = 1, limit = 20 } = req.query;
         const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -37,7 +37,7 @@ router.get("/", rbac("settings", "read"), async (req, res) => {
 /**
  * GET /api/products/:id
  */
-router.get("/:id", rbac("settings", "read"), async (req, res) => {
+router.get("/:id", rbac("products", "read"), async (req, res) => {
     try {
         const product = await req.prisma.product.findFirst({
             where: { id: req.params.id },
@@ -57,7 +57,7 @@ router.get("/:id", rbac("settings", "read"), async (req, res) => {
 /**
  * POST /api/products
  */
-router.post("/", rbac("settings", "update"), async (req, res) => {
+router.post("/", rbac("products", "create"), async (req, res) => {
     try {
         const { name, description, basePrice, unit } = req.body;
 
@@ -82,7 +82,7 @@ router.post("/", rbac("settings", "update"), async (req, res) => {
 /**
  * PUT /api/products/:id
  */
-router.put("/:id", rbac("settings", "update"), async (req, res) => {
+router.put("/:id", rbac("products", "update"), async (req, res) => {
     try {
         const { name, description, basePrice, unit, isActive } = req.body;
 
