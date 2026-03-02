@@ -129,8 +129,28 @@ router.post("/", rbac("customers", "create"), async (req, res) => {
             return res.status(400).json({ error: "identification and name are required" });
         }
 
+        // Normalize empty strings to null
+        const cleanPhone = phone?.trim() || null;
+        const cleanEmail = email?.trim() || null;
+
+        // Check for duplicate phone or email
+        if (cleanPhone || cleanEmail) {
+            const existing = await req.prisma.customer.findFirst({
+                where: {
+                    OR: [
+                        ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+                        ...(cleanEmail ? [{ email: cleanEmail }] : []),
+                    ],
+                },
+            });
+            if (existing) {
+                const field = existing.phone === cleanPhone ? 'teléfono' : 'email';
+                return res.status(409).json({ error: `Ya existe un cliente con ese ${field}: ${existing.name}` });
+            }
+        }
+
         const customer = await req.prisma.customer.create({
-            data: { identification, name, phone, email, address, notes },
+            data: { identification, name, phone: cleanPhone, email: cleanEmail, address, notes },
         });
 
         res.status(201).json({ success: true, data: customer });

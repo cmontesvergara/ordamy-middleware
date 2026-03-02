@@ -22,6 +22,12 @@ router.post("/payment-methods", rbac("settings", "update"), async (req, res) => 
         if (!name) return res.status(400).json({ error: "name is required" });
 
         const method = await req.prisma.paymentMethod.create({ data: { tenantId: req.tenantId, name } });
+
+        // Auto-create account for this payment method
+        await req.prisma.account.create({
+            data: { tenantId: req.tenantId, paymentMethodId: method.id, balance: 0 },
+        });
+
         res.status(201).json({ success: true, data: method });
     } catch (error) {
         if (error.code === "P2002") return res.status(409).json({ error: "Payment method already exists" });
