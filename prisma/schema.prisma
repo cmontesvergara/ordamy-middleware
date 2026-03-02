@@ -347,7 +347,6 @@ model FinancialConfig {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId  String    @unique @map("tenant_id") @db.Uuid
   dueDate   DateTime? @map("due_date") @db.Timestamptz(6)
-  graceDays Int       @default(30) @map("grace_days")
   currency  String    @default("COP") @db.VarChar(3)
   timezone  String    @default("America/Bogota") @db.VarChar(50)
 

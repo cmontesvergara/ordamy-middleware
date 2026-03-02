@@ -249,14 +249,13 @@ router.get("/financial", rbac("settings", "read"), async (req, res) => {
 
 router.put("/financial", rbac("settings", "update"), async (req, res) => {
     try {
-        const { graceDays, currency, timezone, dueDate } = req.body;
+        const { currency, timezone, dueDate } = req.body;
 
         const config = await req.prisma.financialConfig.upsert({
             where: { tenantId: req.tenantId },
-            update: { graceDays, currency, timezone, dueDate: dueDate ? new Date(dueDate) : null },
+            update: { currency, timezone, dueDate: dueDate ? new Date(dueDate) : null },
             create: {
                 tenantId: req.tenantId,
-                graceDays: graceDays || 30,
                 currency: currency || "COP",
                 timezone: timezone || "America/Bogota",
                 dueDate: dueDate ? new Date(dueDate) : null,
