@@ -189,6 +189,14 @@ router.post("/", rbac("orders", "create"), async (req, res) => {
             return res.status(400).json({ error: "customerId and at least one item are required" });
         }
 
+        const customer = await req.prisma.customer.findUnique({
+            where: { id: customerId },
+        });
+
+        if (!customer || !customer.isActive) {
+            return res.status(400).json({ error: "No se puede generar órdenes: el cliente no existe o se encuentra inactivo." });
+        }
+
         // O2: Validate discount permission
         if (discount > 0) {
             const permissions = req.ssoSession?.tenant?.permissions || [];
