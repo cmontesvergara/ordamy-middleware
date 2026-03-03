@@ -18,6 +18,14 @@ router.post("/", rbac("orders", "update"), async (req, res) => {
         }
 
         const result = await req.prisma.$transaction(async (tx) => {
+            // Validate payment method
+            const pm = await tx.paymentMethod.findFirst({
+                where: { id: paymentMethodId, tenantId: req.tenantId },
+            });
+            if (!pm || !pm.isActive) {
+                throw new Error("El medio de pago seleccionado no está activo o no existe.");
+            }
+
             // Validate order exists and is active
             const order = await tx.order.findFirst({
                 where: { id: orderId, tenantId: req.tenantId },
@@ -195,6 +203,15 @@ router.put("/:id", rbac("payments", "edit"), async (req, res) => {
         }
 
         const result = await req.prisma.$transaction(async (tx) => {
+            if (paymentMethodId) {
+                const pm = await tx.paymentMethod.findFirst({
+                    where: { id: paymentMethodId, tenantId: req.tenantId },
+                });
+                if (!pm || !pm.isActive) {
+                    throw new Error("El medio de pago seleccionado no está activo o no existe.");
+                }
+            }
+
             const updated = await tx.payment.update({
                 where: { id: req.params.id },
                 data: {

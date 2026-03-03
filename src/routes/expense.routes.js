@@ -103,6 +103,14 @@ router.post("/", rbac("expenses", "create"), async (req, res) => {
         }
 
         const result = await req.prisma.$transaction(async (tx) => {
+            // Validate payment method
+            const pm = await tx.paymentMethod.findFirst({
+                where: { id: paymentMethodId, tenantId: req.tenantId },
+            });
+            if (!pm || !pm.isActive) {
+                throw new Error("El medio de pago seleccionado no está activo o no existe.");
+            }
+
             const maxExpense = await tx.expense.findFirst({
                 where: { tenantId: req.tenantId },
                 orderBy: { number: "desc" },
@@ -156,6 +164,15 @@ router.put("/:id", rbac("expenses", "edit"), async (req, res) => {
 
         if (!expense) {
             return res.status(404).json({ error: "Expense not found" });
+        }
+
+        if (paymentMethodId) {
+            const pm = await req.prisma.paymentMethod.findFirst({
+                where: { id: paymentMethodId, tenantId: req.tenantId },
+            });
+            if (!pm || !pm.isActive) {
+                return res.status(400).json({ error: "El medio de pago seleccionado no está activo o no existe." });
+            }
         }
 
         const updated = await req.prisma.expense.update({
