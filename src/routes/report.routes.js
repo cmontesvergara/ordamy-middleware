@@ -187,7 +187,7 @@ router.get("/dashboard", rbac("dashboard", "read"), async (req, res) => {
  */
 router.get("/portfolio", rbac("portfolio", "read"), async (req, res) => {
     try {
-        const { dateFrom, dateTo, customerId, status } = req.query;
+        const { dateFrom, dateTo, customerId, status, page = 1, limit = 20 } = req.query;
 
         const where = { balance: { gt: 0 } };
 
@@ -210,13 +210,25 @@ router.get("/portfolio", rbac("portfolio", "read"), async (req, res) => {
             }
         }
 
-        const orders = await req.prisma.order.findMany({
-            where,
-            orderBy: { orderDate: "asc" },
-            include: {
-                customer: { select: { id: true, name: true, identification: true, phone: true } },
-            },
-        });
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const take = parseInt(limit);
+
+        const [orders, totalOrders, balanceAgg] = await Promise.all([
+            req.prisma.order.findMany({
+                where,
+                orderBy: { dueDate: "asc" },
+                skip,
+                take,
+                include: {
+                    customer: { select: { id: true, name: true, identification: true, phone: true } },
+                },
+            }),
+            req.prisma.order.count({ where }),
+            req.prisma.order.aggregate({
+                where,
+                _sum: { balance: true }
+            })
+        ]);
 
         // Calculate days overdue for each order
         const now = new Date();
@@ -226,9 +238,10 @@ router.get("/portfolio", rbac("portfolio", "read"), async (req, res) => {
             return { ...o, daysOverdue };
         });
 
-        const totalBalance = enriched.reduce((sum, o) => sum + parseFloat(o.balance), 0);
+        const totalBalance = balanceAgg._sum.balance || 0;
+        const pages = Math.ceil(totalOrders / take);
 
-        res.json({ success: true, data: enriched, totalBalance, count: enriched.length });
+        res.json({ success: true, data: enriched, totalBalance, count: totalOrders, page: parseInt(page), pages });
     } catch (error) {
         console.error("❌ Error getting portfolio:", error.message);
         res.status(500).json({ error: "Failed to get portfolio" });
