@@ -1,5 +1,6 @@
 const express = require("express");
 const rbac = require("../middlewares/rbac.middleware");
+const { getDayBounds } = require("../utils/date.util");
 
 const router = express.Router();
 
@@ -17,11 +18,20 @@ router.get("/", rbac("orders", "read"), async (req, res) => {
         if (customerId) where.customerId = customerId;
         if (dateFrom || dateTo) {
             where.orderDate = {};
-            if (dateFrom) where.orderDate.gte = new Date(dateFrom);
+
+            const config = await req.prisma.financialConfig.findFirst({
+                where: { tenantId: req.tenantId },
+                select: { timezone: true }
+            });
+            const tz = config?.timezone || 'UTC';
+
+            if (dateFrom) {
+                const bounds = getDayBounds(dateFrom, tz);
+                where.orderDate.gte = bounds.startOfDay;
+            }
             if (dateTo) {
-                const end = new Date(dateTo);
-                end.setHours(23, 59, 59, 999);
-                where.orderDate.lte = end;
+                const bounds = getDayBounds(dateTo, tz);
+                where.orderDate.lte = bounds.endOfDay;
             }
         }
         if (search) {

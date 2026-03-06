@@ -1,5 +1,6 @@
 const express = require("express");
 const rbac = require("../middlewares/rbac.middleware");
+const { getDayBounds, getMonthBounds } = require("../utils/date.util");
 
 const router = express.Router();
 
@@ -9,10 +10,29 @@ const router = express.Router();
  */
 router.get("/dashboard", rbac("dashboard", "read"), async (req, res) => {
     try {
+        const config = await req.prisma.financialConfig.findFirst({
+            where: { tenantId: req.tenantId },
+            select: { timezone: true }
+        });
+        const tz = config?.timezone || 'UTC';
+
         const now = new Date();
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
+
+        const thisMonthBounds = getMonthBounds(currentYear, currentMonth, tz);
+
+        let prevMonth = currentMonth - 1;
+        let prevYear = currentYear;
+        if (prevMonth === 0) {
+            prevMonth = 12;
+            prevYear -= 1;
+        }
+        const lastMonthBounds = getMonthBounds(prevYear, prevMonth, tz);
+
+        const startOfMonth = thisMonthBounds.startOfMonth;
+        const startOfLastMonth = lastMonthBounds.startOfMonth;
+        const endOfLastMonth = lastMonthBounds.endOfMonth;
 
         const [
             salesThisMonth,
@@ -200,13 +220,21 @@ router.get("/portfolio", rbac("portfolio", "read"), async (req, res) => {
 
         if (customerId) where.customerId = customerId;
 
+        const config = await req.prisma.financialConfig.findFirst({
+            where: { tenantId: req.tenantId },
+            select: { timezone: true }
+        });
+        const tz = config?.timezone || 'UTC';
+
         if (dateFrom || dateTo) {
             where.orderDate = {};
-            if (dateFrom) where.orderDate.gte = new Date(dateFrom);
+            if (dateFrom) {
+                const bounds = getDayBounds(dateFrom, tz);
+                where.orderDate.gte = bounds.startOfDay;
+            }
             if (dateTo) {
-                const end = new Date(dateTo);
-                end.setHours(23, 59, 59, 999);
-                where.orderDate.lte = end;
+                const bounds = getDayBounds(dateTo, tz);
+                where.orderDate.lte = bounds.endOfDay;
             }
         }
 
@@ -255,9 +283,17 @@ router.get("/portfolio", rbac("portfolio", "read"), async (req, res) => {
 router.get("/daily", rbac("reports", "read"), async (req, res) => {
     try {
         const { date } = req.query;
-        const targetDate = date ? new Date(date) : new Date();
-        const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
-        const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+        const config = await req.prisma.financialConfig.findFirst({
+            where: { tenantId: req.tenantId },
+            select: { timezone: true }
+        });
+        const tz = config?.timezone || 'UTC';
+
+        const bounds = getDayBounds(date || null, tz);
+
+        const startOfDay = bounds.startOfDay;
+        const endOfDay = bounds.endOfDay;
 
         const dateFilter = { gte: startOfDay, lte: endOfDay };
 
@@ -331,11 +367,20 @@ router.get("/daily", rbac("reports", "read"), async (req, res) => {
 router.get("/monthly", rbac("reports", "read"), async (req, res) => {
     try {
         const { year, month } = req.query;
-        const y = parseInt(year) || new Date().getFullYear();
-        const m = parseInt(month) || new Date().getMonth() + 1;
 
-        const startOfMonth = new Date(y, m - 1, 1);
-        const endOfMonth = new Date(y, m, 0, 23, 59, 59, 999);
+        const config = await req.prisma.financialConfig.findFirst({
+            where: { tenantId: req.tenantId },
+            select: { timezone: true }
+        });
+        const tz = config?.timezone || 'UTC';
+
+        const bounds = getMonthBounds(year || null, month || null, tz);
+        const startOfMonth = bounds.startOfMonth;
+        const endOfMonth = bounds.endOfMonth;
+
+        const y = parseInt(bounds.yearAndMonth.split('-')[0]);
+        const m = parseInt(bounds.yearAndMonth.split('-')[1]);
+
         const dateFilter = { gte: startOfMonth, lte: endOfMonth };
 
         const [

@@ -1,5 +1,6 @@
 const express = require("express");
 const rbac = require("../middlewares/rbac.middleware");
+const { getDayBounds } = require("../utils/date.util");
 
 const router = express.Router();
 
@@ -35,8 +36,21 @@ router.get("/:id/transactions", rbac("cashier", "read"), async (req, res) => {
         const where = { accountId: req.params.id };
         if (from || to) {
             where.transactionDate = {};
-            if (from) where.transactionDate.gte = new Date(from);
-            if (to) where.transactionDate.lte = new Date(to);
+
+            const config = await req.prisma.financialConfig.findFirst({
+                where: { tenantId: req.tenantId },
+                select: { timezone: true }
+            });
+            const tz = config?.timezone || 'UTC';
+
+            if (from) {
+                const bounds = getDayBounds(from, tz);
+                where.transactionDate.gte = bounds.startOfDay;
+            }
+            if (to) {
+                const bounds = getDayBounds(to, tz);
+                where.transactionDate.lte = bounds.endOfDay;
+            }
         }
 
         const [transactions, total] = await Promise.all([
