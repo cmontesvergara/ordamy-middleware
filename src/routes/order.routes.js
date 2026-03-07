@@ -127,20 +127,24 @@ router.put("/:id", rbac("orders", "edit"), async (req, res) => {
             if (items && Array.isArray(items)) {
                 await tx.orderItem.deleteMany({ where: { orderId: req.params.id } });
 
-                let subtotal = 0;
-                for (const item of items) {
+                const newItemsData = items.map(item => {
                     const lineTotal = parseFloat(item.quantity) * parseFloat(item.unitPrice);
-                    subtotal += lineTotal;
-                    await tx.orderItem.create({
-                        data: {
-                            tenantId: req.tenantId,
-                            orderId: req.params.id,
-                            productId: item.productId || null,
-                            description: item.description,
-                            quantity: item.quantity,
-                            unitPrice: item.unitPrice,
-                            lineTotal,
-                        },
+                    return {
+                        tenantId: req.tenantId,
+                        orderId: req.params.id,
+                        productId: item.productId || null,
+                        description: item.description,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        lineTotal,
+                    };
+                });
+
+                let subtotal = newItemsData.reduce((sum, item) => sum + item.lineTotal, 0);
+
+                if (newItemsData.length > 0) {
+                    await tx.orderItem.createMany({
+                        data: newItemsData
                     });
                 }
 
@@ -436,6 +440,7 @@ router.get("/:id/pdf", rbac("orders", "read"), async (req, res) => {
         const order = await req.prisma.order.findFirst({
             where: { id: req.params.id },
             include: {
+                tenant: { select: { name: true } },
                 customer: true,
                 items: {
                     include: { product: { select: { id: true, name: true } } },
@@ -482,7 +487,7 @@ router.get("/:id/pdf", rbac("orders", "read"), async (req, res) => {
             documentId: `ORD-${order.number}`,
             date: dateStr,
             amount: parseFloat(order.total).toString(), // required string without dots
-            companyName: "ORDAMY SYSTEM", // Could be from tenant settings
+            companyName: order.tenant?.name || "ORDAMY SYSTEM",
             status: order.status,
             operationalStatus: order.operationalStatus,
             sellerName: order.sellerName,
@@ -507,7 +512,7 @@ router.get("/:id/pdf", rbac("orders", "read"), async (req, res) => {
             }))
         };
 
-        const docForgeUrl = process.env.DOC_FORGE_URL || "http://localhost:3000";
+        const docForgeUrl = process.env.DOC_FORGE_URL;
         const response = await axios.post(`${docForgeUrl}/api/generate/pdf`, {
             templateId,
             documentData

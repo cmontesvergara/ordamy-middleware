@@ -1,8 +1,182 @@
 const express = require("express");
 const rbac = require("../middlewares/rbac.middleware");
 const { getDayBounds, getMonthBounds } = require("../utils/date.util");
+const axios = require("axios");
 
 const router = express.Router();
+
+// --- HELPER FUNCTIONS ---
+
+async function getDailyData(prisma, tenantId, filterDate) {
+    const config = await prisma.financialConfig.findFirst({
+        where: { tenantId },
+        select: { timezone: true }
+    });
+    const tz = config?.timezone || 'UTC';
+
+    const bounds = getDayBounds(filterDate || null, tz);
+    const startOfDay = bounds.startOfDay;
+    const endOfDay = bounds.endOfDay;
+
+    const dateFilter = { gte: startOfDay, lte: endOfDay };
+
+    const [payments, expenses, ordersCreated] = await Promise.all([
+        prisma.payment.findMany({
+            where: { paymentDate: dateFilter },
+            include: {
+                order: { select: { number: true, customer: { select: { name: true } } } },
+                paymentMethod: { select: { id: true, name: true } },
+            },
+            orderBy: { paymentDate: "asc" },
+        }),
+        prisma.expense.findMany({
+            where: { expenseDate: dateFilter },
+            include: {
+                category: { select: { name: true } },
+                paymentMethod: { select: { id: true, name: true } },
+                supplier: { select: { name: true } },
+            },
+            orderBy: { expenseDate: "asc" },
+        }),
+        prisma.order.count({
+            where: { orderDate: dateFilter },
+        }),
+    ]);
+
+    const totalIncome = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+    const totalExpense = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+
+    const incomeByMethodMap = {};
+    payments.forEach((p) => {
+        const name = p.paymentMethod?.name || "Sin medio";
+        if (!incomeByMethodMap[name]) incomeByMethodMap[name] = { method: name, transactions: 0, total: 0 };
+        incomeByMethodMap[name].total += parseFloat(p.amount);
+        incomeByMethodMap[name].transactions += 1;
+    });
+
+    const expensesByMethodMap = {};
+    expenses.forEach((e) => {
+        const name = e.paymentMethod?.name || "Sin medio";
+        if (!expensesByMethodMap[name]) expensesByMethodMap[name] = { method: name, transactions: 0, total: 0 };
+        expensesByMethodMap[name].total += parseFloat(e.amount);
+        expensesByMethodMap[name].transactions += 1;
+    });
+
+    return {
+        date: startOfDay,
+        dateString: bounds.dateUsed,
+        payments,
+        expenses,
+        totalIncome,
+        totalExpense,
+        net: totalIncome - totalExpense,
+        ordersCreated,
+        incomeByMethodMap,
+        expensesByMethodMap,
+        incomeByMethod: Object.values(incomeByMethodMap).map(m => ({ ...m, count: m.transactions })),
+        expensesByMethod: Object.values(expensesByMethodMap).map(m => ({ ...m, count: m.transactions }))
+    };
+}
+
+async function getMonthlyData(prisma, tenantId, year, month) {
+    const config = await prisma.financialConfig.findFirst({
+        where: { tenantId },
+        select: { timezone: true }
+    });
+    const tz = config?.timezone || 'UTC';
+
+    const bounds = getMonthBounds(year || null, month || null, tz);
+    const startOfMonth = bounds.startOfMonth;
+    const endOfMonth = bounds.endOfMonth;
+    const y = parseInt(bounds.yearAndMonth.split('-')[0]);
+    const m = parseInt(bounds.yearAndMonth.split('-')[1]);
+    const dateFilter = { gte: startOfMonth, lte: endOfMonth };
+
+    const [
+        paymentsByMethod,
+        expensesByCategory,
+        expensesByMethod,
+        ordersSummary,
+        paymentMethods,
+        categories,
+    ] = await Promise.all([
+        prisma.payment.groupBy({
+            by: ["paymentMethodId"],
+            where: { paymentDate: dateFilter },
+            _sum: { amount: true },
+            _count: true,
+        }),
+        prisma.expense.groupBy({
+            by: ["categoryId"],
+            where: { expenseDate: dateFilter },
+            _sum: { amount: true },
+            _count: true,
+        }),
+        prisma.expense.groupBy({
+            by: ["paymentMethodId"],
+            where: { expenseDate: dateFilter },
+            _sum: { amount: true },
+            _count: true,
+        }),
+        prisma.order.aggregate({
+            where: { orderDate: dateFilter },
+            _sum: { total: true },
+            _count: true,
+        }),
+        prisma.paymentMethod.findMany({ select: { id: true, name: true } }),
+        prisma.category.findMany({ select: { id: true, name: true } }),
+    ]);
+
+    const methodMap = {};
+    paymentMethods.forEach((pm) => { methodMap[pm.id] = pm.name; });
+    const categoryMap = {};
+    categories.forEach((c) => { categoryMap[c.id] = c.name; });
+
+    const totalIncome = paymentsByMethod.reduce((sum, g) => sum + Number(g._sum.amount || 0), 0);
+    const totalExpenses = expensesByCategory.reduce((sum, g) => sum + Number(g._sum.amount || 0), 0);
+    const netIncome = totalIncome - totalExpenses;
+
+    const byMethod = paymentsByMethod.map((g) => ({
+        name: methodMap[g.paymentMethodId] || "Sin medio",
+        method: methodMap[g.paymentMethodId] || "Sin medio",
+        total: Number(g._sum.amount || 0),
+        count: g._count,
+        transactions: g._count,
+    }));
+
+    const byCategory = expensesByCategory.map((g) => ({
+        name: categoryMap[g.categoryId] || "Sin categoría",
+        category: categoryMap[g.categoryId] || "Sin categoría",
+        total: Number(g._sum.amount || 0),
+        count: g._count,
+        quantity: g._count,
+    }));
+
+    const exByMethod = expensesByMethod.map((g) => ({
+        name: methodMap[g.paymentMethodId] || "Sin medio",
+        method: methodMap[g.paymentMethodId] || "Sin medio",
+        total: Number(g._sum.amount || 0),
+        count: g._count,
+        transactions: g._count,
+    }));
+
+    return {
+        year: y,
+        month: m,
+        totalIncome,
+        totalExpenses,
+        netIncome,
+        ordersSummary: {
+            count: ordersSummary._count,
+            total: Number(ordersSummary._sum.total || 0),
+        },
+        byMethod,
+        byCategory,
+        expensesByMethod: exByMethod,
+    };
+}
+
+// ------------------------
 
 /**
  * GET /api/reports/dashboard
@@ -283,80 +457,96 @@ router.get("/portfolio", rbac("portfolio", "read"), async (req, res) => {
 router.get("/daily", rbac("reports", "read"), async (req, res) => {
     try {
         const { date } = req.query;
-
-        const config = await req.prisma.financialConfig.findFirst({
-            where: { tenantId: req.tenantId },
-            select: { timezone: true }
-        });
-        const tz = config?.timezone || 'UTC';
-
-        const bounds = getDayBounds(date || null, tz);
-
-        const startOfDay = bounds.startOfDay;
-        const endOfDay = bounds.endOfDay;
-
-        const dateFilter = { gte: startOfDay, lte: endOfDay };
-
-        const [payments, expenses, ordersCreated] = await Promise.all([
-            req.prisma.payment.findMany({
-                where: { paymentDate: dateFilter },
-                include: {
-                    order: { select: { number: true, customer: { select: { name: true } } } },
-                    paymentMethod: { select: { id: true, name: true } },
-                },
-                orderBy: { paymentDate: "asc" },
-            }),
-            req.prisma.expense.findMany({
-                where: { expenseDate: dateFilter },
-                include: {
-                    category: { select: { name: true } },
-                    paymentMethod: { select: { id: true, name: true } },
-                    supplier: { select: { name: true } },
-                },
-                orderBy: { expenseDate: "asc" },
-            }),
-            req.prisma.order.count({
-                where: { orderDate: dateFilter },
-            }),
-        ]);
-
-        const totalIncome = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-        const totalExpense = expenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
-
-        // D3: Group by payment method
-        const incomeByMethod = {};
-        payments.forEach((p) => {
-            const name = p.paymentMethod?.name || "Sin medio";
-            if (!incomeByMethod[name]) incomeByMethod[name] = { method: name, total: 0, count: 0 };
-            incomeByMethod[name].total += parseFloat(p.amount);
-            incomeByMethod[name].count += 1;
-        });
-
-        const expensesByMethod = {};
-        expenses.forEach((e) => {
-            const name = e.paymentMethod?.name || "Sin medio";
-            if (!expensesByMethod[name]) expensesByMethod[name] = { method: name, total: 0, count: 0 };
-            expensesByMethod[name].total += parseFloat(e.amount);
-            expensesByMethod[name].count += 1;
-        });
+        const data = await getDailyData(req.prisma, req.tenantId, date);
 
         res.json({
             success: true,
             data: {
-                date: startOfDay.toISOString().split("T")[0],
-                payments,
-                expenses,
-                totalIncome,
-                totalExpense,
-                net: totalIncome - totalExpense,
-                ordersCreated,
-                incomeByMethod: Object.values(incomeByMethod),
-                expensesByMethod: Object.values(expensesByMethod),
+                date: data.dateString,
+                payments: data.payments,
+                expenses: data.expenses,
+                totalIncome: data.totalIncome,
+                totalExpense: data.totalExpense,
+                net: data.net,
+                ordersCreated: data.ordersCreated,
+                incomeByMethod: data.incomeByMethod,
+                expensesByMethod: data.expensesByMethod,
             },
         });
     } catch (error) {
         console.error("❌ Error getting daily report:", error.message);
         res.status(500).json({ error: "Failed to get daily report" });
+    }
+});
+
+/**
+ * GET /api/reports/daily/pdf
+ * Daily report exported as PDF via DocForge Ordamy t0000003002
+ */
+router.get("/daily/pdf", rbac("reports", "read"), async (req, res) => {
+    try {
+        const { date } = req.query;
+
+        const tenant = await req.prisma.tenant.findUnique({
+            where: { id: req.tenantId },
+            select: { name: true }
+        });
+
+        const data = await getDailyData(req.prisma, req.tenantId, date);
+
+        // Formato para la vista del documento DocForge
+        const incomeByMethod = Object.values(data.incomeByMethodMap).map(m => ({ ...m, total: m.total.toString() }));
+        const expensesByMethod = Object.values(data.expensesByMethodMap).map(m => ({ ...m, total: m.total.toString() }));
+
+        const paymentsList = data.payments.map(p => ({
+            orderNumber: p.order?.number || 0,
+            customer: p.order?.customer?.name || "N/A",
+            method: p.paymentMethod?.name || "Sin medio",
+            amount: parseFloat(p.amount).toString()
+        }));
+
+        const expenseDetails = data.expenses.map(e => ({
+            description: e.description || "N/A",
+            category: e.category?.name || "N/A",
+            method: e.paymentMethod?.name || "Sin medio",
+            amount: parseFloat(e.amount).toString()
+        }));
+
+        const dateStr = data.dateString.split('-').reverse().join('/'); // DD/MM/YYYY
+
+        const documentData = {
+            companyName: tenant?.name || "ORDAMY SYSTEM",
+            date: dateStr,
+            amount: data.net.toString(),
+            income: data.totalIncome.toString(),
+            expenses: data.totalExpense.toString(),
+            net: data.net.toString(),
+            ordersCreated: data.ordersCreated,
+            incomeByMethod,
+            incomeTotalAmount: data.totalIncome.toString(),
+            expensesByMethod,
+            expensesTotalAmount: data.totalExpense.toString(),
+            payments: paymentsList,
+            expenseDetails,
+            documentId: `CORTE-${dateStr.replace(/\//g, '')}`,
+            signature: "N/A"
+        };
+
+        const docForgeUrl = process.env.DOC_FORGE_URL;
+        const response = await axios.post(`${docForgeUrl}/api/generate/pdf`, {
+            templateId: "t0000003002",
+            documentData
+        }, {
+            responseType: 'stream'
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="corte-diario-${dateStr.replace(/\//g, '-')}.pdf"`);
+        response.data.pipe(res);
+
+    } catch (error) {
+        console.error("❌ Error generating daily PDF:", error.message);
+        res.status(500).json({ error: "Failed to generate daily report PDF" });
     }
 });
 
@@ -367,98 +557,97 @@ router.get("/daily", rbac("reports", "read"), async (req, res) => {
 router.get("/monthly", rbac("reports", "read"), async (req, res) => {
     try {
         const { year, month } = req.query;
-
-        const config = await req.prisma.financialConfig.findFirst({
-            where: { tenantId: req.tenantId },
-            select: { timezone: true }
-        });
-        const tz = config?.timezone || 'UTC';
-
-        const bounds = getMonthBounds(year || null, month || null, tz);
-        const startOfMonth = bounds.startOfMonth;
-        const endOfMonth = bounds.endOfMonth;
-
-        const y = parseInt(bounds.yearAndMonth.split('-')[0]);
-        const m = parseInt(bounds.yearAndMonth.split('-')[1]);
-
-        const dateFilter = { gte: startOfMonth, lte: endOfMonth };
-
-        const [
-            paymentsByMethod,
-            expensesByCategory,
-            expensesByMethod,
-            ordersSummary,
-            paymentMethods,
-            categories,
-        ] = await Promise.all([
-            req.prisma.payment.groupBy({
-                by: ["paymentMethodId"],
-                where: { paymentDate: dateFilter },
-                _sum: { amount: true },
-                _count: true,
-            }),
-            req.prisma.expense.groupBy({
-                by: ["categoryId"],
-                where: { expenseDate: dateFilter },
-                _sum: { amount: true },
-                _count: true,
-            }),
-            req.prisma.expense.groupBy({
-                by: ["paymentMethodId"],
-                where: { expenseDate: dateFilter },
-                _sum: { amount: true },
-                _count: true,
-            }),
-            req.prisma.order.aggregate({
-                where: { orderDate: dateFilter },
-                _sum: { total: true },
-                _count: true,
-            }),
-            req.prisma.paymentMethod.findMany({ select: { id: true, name: true } }),
-            req.prisma.category.findMany({ select: { id: true, name: true } }),
-        ]);
-
-        // Resolve names
-        const methodMap = {};
-        paymentMethods.forEach((pm) => { methodMap[pm.id] = pm.name; });
-        const categoryMap = {};
-        categories.forEach((c) => { categoryMap[c.id] = c.name; });
-
-        const totalIncome = paymentsByMethod.reduce((sum, g) => sum + Number(g._sum.amount || 0), 0);
-        const totalExpenses = expensesByCategory.reduce((sum, g) => sum + Number(g._sum.amount || 0), 0);
+        const data = await getMonthlyData(req.prisma, req.tenantId, year, month);
 
         res.json({
             success: true,
             data: {
-                year: y,
-                month: m,
-                totalIncome,
-                totalExpenses,
-                netIncome: totalIncome - totalExpenses,
-                ordersSummary: {
-                    count: ordersSummary._count,
-                    total: Number(ordersSummary._sum.total || 0),
-                },
-                byMethod: paymentsByMethod.map((g) => ({
-                    name: methodMap[g.paymentMethodId] || "Sin medio",
-                    total: Number(g._sum.amount || 0),
-                    count: g._count,
-                })),
-                byCategory: expensesByCategory.map((g) => ({
-                    name: categoryMap[g.categoryId] || "Sin categoría",
-                    total: Number(g._sum.amount || 0),
-                    count: g._count,
-                })),
-                expensesByMethod: expensesByMethod.map((g) => ({
-                    name: methodMap[g.paymentMethodId] || "Sin medio",
-                    total: Number(g._sum.amount || 0),
-                    count: g._count,
-                })),
+                year: data.year,
+                month: data.month,
+                totalIncome: data.totalIncome,
+                totalExpenses: data.totalExpenses,
+                netIncome: data.netIncome,
+                ordersSummary: data.ordersSummary,
+                byMethod: data.byMethod,
+                byCategory: data.byCategory,
+                expensesByMethod: data.expensesByMethod,
             },
         });
     } catch (error) {
         console.error("❌ Error getting monthly report:", error.message);
         res.status(500).json({ error: "Failed to get monthly report" });
+    }
+});
+
+/**
+ * GET /api/reports/monthly/pdf
+ * Monthly summary exported as PDF via DocForge Ordamy t0000003003
+ */
+router.get("/monthly/pdf", rbac("reports", "read"), async (req, res) => {
+    try {
+        const { year, month } = req.query;
+
+        const tenant = await req.prisma.tenant.findUnique({
+            where: { id: req.tenantId },
+            select: { name: true }
+        });
+
+        const data = await getMonthlyData(req.prisma, req.tenantId, year, month);
+
+        const incomeByMethodForm = data.byMethod.map((g) => ({
+            method: g.method,
+            total: g.total.toString(),
+            transactions: g.transactions,
+        }));
+
+        const expensesByMethodForm = data.expensesByMethod.map((g) => ({
+            method: g.method,
+            total: g.total.toString(),
+            transactions: g.transactions,
+        }));
+
+        const expensesByCategoryForm = data.byCategory.map((g) => ({
+            category: g.category,
+            total: g.total.toString(),
+            quantity: g.quantity,
+        }));
+
+        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+        const dateStr = `${monthNames[data.month - 1]} ${data.year}`;
+
+        const documentData = {
+            companyName: tenant?.name || "ORDAMY SYSTEM",
+            date: dateStr,
+            amount: data.netIncome.toString(),
+            income: data.totalIncome.toString(),
+            expenses: data.totalExpenses.toString(),
+            net: data.netIncome.toString(),
+            ordersCount: data.ordersSummary.count,
+            ordersTotal: data.ordersSummary.total.toString(),
+            incomeByMethod: incomeByMethodForm,
+            incomeTotalAmount: data.totalIncome.toString(),
+            expensesByMethod: expensesByMethodForm,
+            expensesTotalAmount: data.totalExpenses.toString(),
+            expensesByCategory: expensesByCategoryForm,
+            documentId: `CORTE-${data.month}-${data.year}`,
+            signature: "N/A"
+        };
+
+        const docForgeUrl = process.env.DOC_FORGE_URL;
+        const response = await axios.post(`${docForgeUrl}/api/generate/pdf`, {
+            templateId: "t0000003003",
+            documentData
+        }, {
+            responseType: 'stream'
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="corte-mensual-${data.month}-${data.year}.pdf"`);
+        response.data.pipe(res);
+
+    } catch (error) {
+        console.error("❌ Error generating monthly PDF:", error.message);
+        res.status(500).json({ error: "Failed to generate monthly report PDF" });
     }
 });
 
