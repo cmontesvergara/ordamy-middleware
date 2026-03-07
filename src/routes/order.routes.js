@@ -1,6 +1,7 @@
 const express = require("express");
 const rbac = require("../middlewares/rbac.middleware");
 const { getDayBounds } = require("../utils/date.util");
+const axios = require("axios");
 
 const router = express.Router();
 
@@ -420,6 +421,112 @@ router.put("/:id/operational-status", rbac("orders", "update"), async (req, res)
     } catch (error) {
         console.error("❌ Error updating operational status:", error.message);
         res.status(500).json({ error: "Failed to update operational status" });
+    }
+});
+
+/**
+ * GET /api/orders/:id/pdf
+ * Generate and download PDF voucher (production or customer)
+ */
+router.get("/:id/pdf", rbac("orders", "read"), async (req, res) => {
+    try {
+        const { mode } = req.query; // 'production' or 'customer'
+        const templateId = mode === 'customer' ? 't0000003001' : 't0000003000';
+
+        const order = await req.prisma.order.findFirst({
+            where: { id: req.params.id },
+            include: {
+                customer: true,
+                items: {
+                    include: { product: { select: { id: true, name: true } } },
+                    orderBy: { createdAt: "asc" },
+                },
+            },
+        });
+
+        if (!order) {
+            return res.status(404).json({ error: "Order not found" });
+        }
+
+        const config = await req.prisma.financialConfig.findFirst({
+            where: { tenantId: req.tenantId },
+            select: { timezone: true }
+        });
+        const tz = config?.timezone || 'UTC';
+
+        // Formatear la fecha ej: "04 de marzo de 2026"
+        const dateFormatter = new Intl.DateTimeFormat('es-CO', {
+            timeZone: tz,
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+        // Extraemos componentes para armar string customizado
+        const dparts = dateFormatter.formatToParts(order.orderDate);
+        const day = dparts.find(p => p.type === 'day').value;
+        const month = dparts.find(p => p.type === 'month').value;
+        const year = dparts.find(p => p.type === 'year').value;
+        let dateStr = `${day} de ${month} de ${year}`;
+
+        // Para dueDate
+        let dueDateStr = "";
+        if (order.dueDate) {
+            const dueDateParts = dateFormatter.formatToParts(order.dueDate);
+            const dDue = dueDateParts.find(p => p.type === 'day').value;
+            const mDue = dueDateParts.find(p => p.type === 'month').value;
+            const yDue = dueDateParts.find(p => p.type === 'year').value;
+            dueDateStr = `${dDue} de ${mDue} de ${yDue}`;
+        }
+
+        const documentData = {
+            documentId: `ORD-${order.number}`,
+            date: dateStr,
+            amount: parseFloat(order.total).toString(), // required string without dots
+            companyName: "ORDAMY SYSTEM", // Could be from tenant settings
+            status: order.status,
+            operationalStatus: order.operationalStatus,
+            sellerName: order.sellerName,
+            dueDate: dueDateStr,
+            subtotal: parseFloat(order.subtotal).toString(),
+            taxRate: parseFloat(order.taxRate).toString(),
+            taxAmount: parseFloat(order.taxAmount).toString(),
+            discount: parseFloat(order.discount).toString(),
+            balance: parseFloat(order.balance).toString(),
+            customer: {
+                name: order.customer.name,
+                identification: order.customer.identification || "",
+                phone: order.customer.phone || "",
+                email: order.customer.email || "",
+                address: order.customer.address || ""
+            },
+            items: order.items.map(item => ({
+                description: item.description || (item.product ? item.product.name : ""),
+                quantity: parseFloat(item.quantity).toString(),
+                unitPrice: parseFloat(item.unitPrice).toString(),
+                lineTotal: parseFloat(item.lineTotal).toString()
+            }))
+        };
+
+        const docForgeUrl = process.env.DOC_FORGE_URL || "http://localhost:3000";
+        const response = await axios.post(`${docForgeUrl}/api/generate/pdf`, {
+            templateId,
+            documentData
+        }, {
+            responseType: 'stream'
+        });
+
+        // Forward headers and stream
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="orden-${order.number}.pdf"`);
+
+        response.data.pipe(res);
+
+    } catch (error) {
+        console.error("❌ Error generating PDF:", error.message);
+        if (error.response) {
+            console.error("DocForge Error:", error.response.status, error.response.data);
+        }
+        res.status(500).json({ error: "Failed to generate PDF" });
     }
 });
 
