@@ -10,6 +10,7 @@ const ssoSyncRoutes = require("./routes/ssoSync.routes");
 // Business Routes
 const customerRoutes = require("./routes/customer.routes");
 const productRoutes = require("./routes/product.routes");
+const materialRoutes = require("./routes/material.routes");
 const orderRoutes = require("./routes/order.routes");
 const expenseRoutes = require("./routes/expense.routes");
 const accountRoutes = require("./routes/account.routes");
@@ -40,6 +41,7 @@ app.use("/api/sso", ssoSyncRoutes);
 // All business routes go through SSO auth + tenant scope
 app.use("/api/customers", ssoAuthMiddleware, tenantScope, customerRoutes);
 app.use("/api/products", ssoAuthMiddleware, tenantScope, productRoutes);
+app.use("/api/materials", ssoAuthMiddleware, tenantScope, materialRoutes);
 app.use("/api/orders", ssoAuthMiddleware, tenantScope, orderRoutes);
 app.use("/api/expenses", ssoAuthMiddleware, tenantScope, expenseRoutes);
 app.use("/api/accounts", ssoAuthMiddleware, tenantScope, accountRoutes);

@@ -32,6 +32,7 @@ model Tenant {
   suppliers       Supplier[]
   attachments     Attachment[]
   taxConfigs      TaxConfig[]
+  materials       Material[]
   financialConfig FinancialConfig?
 
   @@map("tenants")
@@ -152,6 +153,24 @@ model Product {
   @@unique([tenantId, name])
   @@index([tenantId])
   @@map("products")
+}
+
+model Material {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(300)
+  description String?
+  price       Decimal  @default(0) @db.Decimal(12, 2)
+  unit        String?  @db.VarChar(30)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("materials")
 }
 
 model Order {
