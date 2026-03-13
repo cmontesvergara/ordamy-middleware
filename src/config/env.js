@@ -9,7 +9,8 @@ module.exports = {
     SSO_BACKEND_URL: process.env.SSO_BACKEND_URL || "http://localhost:3000",
     FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:4200",
     APP_ID: process.env.APP_ID || "ordamy",
-    COOKIE_NAME: process.env.COOKIE_NAME || "ordamy_session",
+    COOKIE_NAME: process.env.COOKIE_NAME || "bigapp-session-ordamy",
+    COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || ".bigso.co",
     NODE_ENV: process.env.NODE_ENV || "development",
     DATABASE_URL: process.env.DATABASE_URL,
 };

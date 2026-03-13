@@ -2,9 +2,26 @@ const express = require("express");
 const ssoService = require("../services/sso.service");
 const ssoAuthMiddleware = require("../middlewares/ssoAuth.middleware");
 const { APP_ID, COOKIE_NAME } = require("../config/env");
-
-
 const router = express.Router();
+
+/**
+ * Utility to generate standard cookie options with conditional cross-domain support
+ */
+function getCookieOptions(customOptions = {}) {
+    const options = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        ...customOptions
+    };
+
+    if (process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN) {
+        options.domain = process.env.COOKIE_DOMAIN; // e.g., ".bigso.co"
+    }
+
+    return options;
+}
 
 /**
  * POST /api/auth/exchange
@@ -25,13 +42,11 @@ router.post("/exchange", async (req, res) => {
         }
 
         // Set local cookie
-        res.cookie(COOKIE_NAME, ssoResponse.sessionToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
+        const cookieOptions = getCookieOptions({
             maxAge: 24 * 60 * 60 * 1000, // 24 hours
-            path: "/",
         });
+
+        res.cookie(COOKIE_NAME, ssoResponse.sessionToken, cookieOptions);
 
         res.json({
             success: true,
@@ -95,12 +110,8 @@ router.post("/logout", async (req, res) => {
         }
     }
 
-    res.clearCookie(COOKIE_NAME, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-    });
+    const cookieOptions = getCookieOptions();
+    res.clearCookie(COOKIE_NAME, cookieOptions);
 
     res.json({ success: true, message: `Logged out from ${APP_ID}` });
 });
