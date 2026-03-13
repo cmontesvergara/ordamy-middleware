@@ -129,9 +129,16 @@ router.post("/", rbac("customers", "create"), async (req, res) => {
             return res.status(400).json({ error: "identification and name are required" });
         }
 
+        // Normalize Name to Pascal Case (Title Case)
+        const cleanName = name.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+
         // Normalize empty strings to null
         const cleanPhone = phone?.trim() || null;
         const cleanEmail = email?.trim() || null;
+
+        if (cleanPhone && !/^3\d{9}$/.test(cleanPhone)) {
+            return res.status(400).json({ error: "El teléfono debe tener 10 dígitos, empezar por 3 y no contener espacios" });
+        }
 
         // Check for duplicate phone or email
         if (cleanPhone || cleanEmail) {
@@ -150,7 +157,7 @@ router.post("/", rbac("customers", "create"), async (req, res) => {
         }
 
         const customer = await req.prisma.customer.create({
-            data: { identification, name, phone: cleanPhone, email: cleanEmail, address, notes },
+            data: { identification, name: cleanName, phone: cleanPhone, email: cleanEmail, address, notes },
         });
 
         res.status(201).json({ success: true, data: customer });
@@ -171,9 +178,16 @@ router.put("/:id", rbac("customers", "edit"), async (req, res) => {
     try {
         const { name, phone, email, address, notes, isActive } = req.body;
 
+        const cleanName = name ? name.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : undefined;
+        const cleanPhone = phone?.trim() || null;
+
+        if (cleanPhone && !/^3\d{9}$/.test(cleanPhone)) {
+            return res.status(400).json({ error: "El teléfono debe tener 10 dígitos, empezar por 3 y no contener espacios" });
+        }
+
         const customer = await req.prisma.customer.update({
             where: { id: req.params.id },
-            data: { name, phone, email, address, notes, isActive },
+            data: { name: cleanName, phone: cleanPhone, email, address, notes, isActive },
         });
 
         res.json({ success: true, data: customer });
