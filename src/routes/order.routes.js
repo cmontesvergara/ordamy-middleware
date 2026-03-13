@@ -114,8 +114,8 @@ router.put("/:id", rbac("orders", "edit"), async (req, res) => {
             return res.status(404).json({ error: "Order not found" });
         }
 
-        if (order.status === "CANCELLED") {
-            return res.status(400).json({ error: "Cannot edit cancelled orders" });
+        if (order.status !== "ACTIVE") {
+            return res.status(400).json({ error: "Only active orders can be edited" });
         }
 
         const result = await req.prisma.$transaction(async (tx) => {
