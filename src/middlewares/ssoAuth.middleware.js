@@ -8,16 +8,15 @@ const prisma = require("../config/prisma");
  */
 async function ssoAuthMiddleware(req, res, next) {
     try {
-        const sessionToken = req.cookies[COOKIE_NAME];
+        let sessionToken = req.cookies[COOKIE_NAME];
+        let session = null;
 
-        if (!sessionToken) {
-            return res.status(401).json({ error: "No session found in cookies" });
+        if (sessionToken) {
+            session = await ssoService.validateSessionToken(sessionToken, APP_ID);
         }
 
-        let session = await ssoService.validateSessionToken(sessionToken, APP_ID);
-
         if (!session) {
-            // Token is invalid or expired. Try to refresh if we have a refresh token.
+            // Token is either missing, invalid, or expired. Try to refresh if we have a refresh token.
             const refreshToken = req.cookies[`${COOKIE_NAME}_refresh`];
             
             if (refreshToken) {
@@ -54,8 +53,6 @@ async function ssoAuthMiddleware(req, res, next) {
                     res.cookie(`${COOKIE_NAME}_refresh`, newSessionData.refreshToken, refreshCookieOptions);
 
                     // Re-validate with the new session token to get the full user/tenant payload
-                    // (Or we could parse the payload from the refresh response if it was fully populated, 
-                    // but /verify-session gives us the exact structure Ordamy expects)
                     session = await ssoService.validateSessionToken(newSessionData.sessionToken, APP_ID);
                 }
             }
