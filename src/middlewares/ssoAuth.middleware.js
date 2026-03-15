@@ -14,12 +14,58 @@ async function ssoAuthMiddleware(req, res, next) {
             return res.status(401).json({ error: "No session found in cookies" });
         }
 
-        const session = await ssoService.validateSessionToken(sessionToken, APP_ID);
+        let session = await ssoService.validateSessionToken(sessionToken, APP_ID);
 
         if (!session) {
-            // Clear invalid cookie
-            res.clearCookie(COOKIE_NAME);
-            return res.status(401).json({ error: "Session expired or invalid" });
+            // Token is invalid or expired. Try to refresh if we have a refresh token.
+            const refreshToken = req.cookies[`${COOKIE_NAME}_refresh`];
+            
+            if (refreshToken) {
+                console.log("🔄 Attempting to refresh app session...");
+                const newSessionData = await ssoService.refreshAppSession(refreshToken, APP_ID);
+                
+                if (newSessionData) {
+                    console.log("✅ App session refreshed successfully.");
+                    
+                    const sessionMaxAge = new Date(newSessionData.expiresAt).getTime() - Date.now();
+                    const refreshMaxAge = newSessionData.refreshExpiresAt 
+                        ? new Date(newSessionData.refreshExpiresAt).getTime() - Date.now() 
+                        : 7 * 24 * 60 * 60 * 1000;
+
+                    // Set new cookies
+                    const sessionCookieOptions = {
+                        httpOnly: true,
+                        secure: process.env.NODE_ENV === "production",
+                        sameSite: "lax",
+                        path: "/",
+                        maxAge: sessionMaxAge > 0 ? sessionMaxAge : 0,
+                    };
+                    const refreshCookieOptions = {
+                        ...sessionCookieOptions,
+                        maxAge: refreshMaxAge > 0 ? refreshMaxAge : 0,
+                    };
+
+                    if (process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN) {
+                        sessionCookieOptions.domain = process.env.COOKIE_DOMAIN;
+                        refreshCookieOptions.domain = process.env.COOKIE_DOMAIN;
+                    }
+
+                    res.cookie(COOKIE_NAME, newSessionData.sessionToken, sessionCookieOptions);
+                    res.cookie(`${COOKIE_NAME}_refresh`, newSessionData.refreshToken, refreshCookieOptions);
+
+                    // Re-validate with the new session token to get the full user/tenant payload
+                    // (Or we could parse the payload from the refresh response if it was fully populated, 
+                    // but /verify-session gives us the exact structure Ordamy expects)
+                    session = await ssoService.validateSessionToken(newSessionData.sessionToken, APP_ID);
+                }
+            }
+
+            if (!session) {
+                // Clear invalid cookies
+                res.clearCookie(COOKIE_NAME);
+                res.clearCookie(`${COOKIE_NAME}_refresh`);
+                return res.status(401).json({ error: "Session expired or invalid" });
+            }
         }
 
         // Sync Tenant locally to ensure foreign keys in Ordamy DB don't fail

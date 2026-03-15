@@ -41,12 +41,23 @@ router.post("/exchange", async (req, res) => {
             return res.status(401).json({ error: "Invalid authorization code" });
         }
 
-        // Set local cookie
-        const cookieOptions = getCookieOptions({
-            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        // Set local cookies
+        const sessionMaxAge = new Date(ssoResponse.expiresAt).getTime() - Date.now();
+        const refreshMaxAge = ssoResponse.refreshExpiresAt 
+            ? new Date(ssoResponse.refreshExpiresAt).getTime() - Date.now() 
+            : 7 * 24 * 60 * 60 * 1000;
+
+        const sessionCookieOptions = getCookieOptions({
+            maxAge: sessionMaxAge > 0 ? sessionMaxAge : 0,
+        });
+        const refreshCookieOptions = getCookieOptions({
+            maxAge: refreshMaxAge > 0 ? refreshMaxAge : 0,
         });
 
-        res.cookie(COOKIE_NAME, ssoResponse.sessionToken, cookieOptions);
+        res.cookie(COOKIE_NAME, ssoResponse.sessionToken, sessionCookieOptions);
+        if (ssoResponse.refreshToken) {
+            res.cookie(`${COOKIE_NAME}_refresh`, ssoResponse.refreshToken, refreshCookieOptions);
+        }
 
         res.json({
             success: true,
@@ -112,6 +123,7 @@ router.post("/logout", async (req, res) => {
 
     const cookieOptions = getCookieOptions();
     res.clearCookie(COOKIE_NAME, cookieOptions);
+    res.clearCookie(`${COOKIE_NAME}_refresh`, cookieOptions);
 
     res.json({ success: true, message: `Logged out from ${APP_ID}` });
 });

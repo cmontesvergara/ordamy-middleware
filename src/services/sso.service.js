@@ -80,6 +80,43 @@ class SsoService {
             }
         );
     }
+
+    /**
+     * Refreshes the application session using a refresh token
+     * @param {string} refreshToken - The stored refresh token
+     * @param {string} appId - Application ID
+     * @returns {Promise<object|null>} The new session tokens or null if failed
+     */
+    async refreshAppSession(refreshToken, appId) {
+        try {
+            const response = await axios.post(
+                `${SSO_BACKEND_URL}/api/v1/auth/app-refresh`,
+                {
+                    refreshToken,
+                    appId,
+                },
+                {
+                    timeout: 5000,
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            if (response.data.success) {
+                return {
+                    sessionToken: response.data.sessionToken,
+                    refreshToken: response.data.refreshToken,
+                    expiresAt: response.data.expiresAt,
+                    refreshExpiresAt: response.data.refreshExpiresAt,
+                };
+            }
+            return null;
+        } catch (error) {
+            console.error("❌ Error refreshing app session:", error.response?.data || error.message);
+            return null;
+        }
+    }
 }
 
 module.exports = new SsoService();
