@@ -1,7 +1,7 @@
 const express = require("express");
 const ssoService = require("../services/sso.service");
 const ssoAuthMiddleware = require("../middlewares/ssoAuth.middleware");
-const { APP_ID, COOKIE_NAME } = require("../config/env");
+const { APP_ID, COOKIE_NAME, FRONTEND_URL } = require("../config/env");
 const router = express.Router();
 
 /**
@@ -80,6 +80,79 @@ router.post("/exchange", async (req, res) => {
         console.error("❌ Error exchanging code:", error.response?.data || error.message);
         res.status(error.response?.status || 500).json({
             error: error.response?.data?.message || "Failed to exchange authorization code",
+        });
+    }
+});
+
+/**
+ * POST /api/auth/exchange-v2
+ * Exchange signed payload (JWS) for session token (SSO v2.3)
+ * 1. Verify JWS signature against SSO JWKS
+ * 2. Validate iss, aud, exp
+ * 3. Extract auth code from verified payload
+ * 4. Exchange code for session token via SSO Core
+ */
+router.post("/exchange-v2", async (req, res) => {
+    try {
+        const { payload } = req.body;
+
+        if (!payload) {
+            return res.status(400).json({ error: "Signed payload is required" });
+        }
+
+        // Step 1: Verify JWS against SSO JWKS
+        const verified = await ssoService.verifySignedPayload(payload, FRONTEND_URL);
+
+        if (!verified.code) {
+            return res.status(400).json({ error: "No authorization code found in payload" });
+        }
+
+        // Step 2: Exchange the verified auth code for session token (reuses existing flow)
+        const ssoResponse = await ssoService.exchangeCodeForToken(verified.code, APP_ID);
+
+        if (!ssoResponse.success) {
+            return res.status(401).json({ error: "Invalid authorization code" });
+        }
+
+        // Step 3: Set cookies (same logic as /exchange)
+        const sessionMaxAge = new Date(ssoResponse.expiresAt).getTime() - Date.now();
+        const refreshMaxAge = ssoResponse.refreshExpiresAt 
+            ? new Date(ssoResponse.refreshExpiresAt).getTime() - Date.now() 
+            : 7 * 24 * 60 * 60 * 1000;
+
+        const sessionCookieOptions = getCookieOptions({
+            maxAge: sessionMaxAge > 0 ? sessionMaxAge : 0,
+        });
+        const refreshCookieOptions = getCookieOptions({
+            maxAge: refreshMaxAge > 0 ? refreshMaxAge : 0,
+        });
+
+        res.cookie(COOKIE_NAME, ssoResponse.sessionToken, sessionCookieOptions);
+        if (ssoResponse.refreshToken) {
+            res.cookie(`${COOKIE_NAME}_refresh`, ssoResponse.refreshToken, refreshCookieOptions);
+        }
+
+        res.json({
+            success: true,
+            user: {
+                userId: ssoResponse.user.userId,
+                email: ssoResponse.user.email,
+                firstName: ssoResponse.user.firstName,
+                lastName: ssoResponse.user.lastName,
+            },
+            tenant: {
+                tenantId: ssoResponse.tenant.tenantId,
+                name: ssoResponse.tenant.name,
+                slug: ssoResponse.tenant.slug,
+                role: ssoResponse.tenant.role,
+                permissions: ssoResponse.tenant.permissions,
+            },
+            expiresAt: ssoResponse.expiresAt,
+        });
+    } catch (error) {
+        console.error("❌ Error exchanging v2 payload:", error.message);
+        res.status(error.response?.status || 401).json({
+            error: error.message || "Failed to verify signed payload",
         });
     }
 });

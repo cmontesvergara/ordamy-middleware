@@ -1,7 +1,33 @@
 const axios = require("axios");
-const { SSO_BACKEND_URL } = require("../config/env");
+const { SSO_BACKEND_URL, SSO_JWKS_URL } = require("../config/env");
+
+// jose is ESM-only, so we use dynamic import
+let _jose = null;
+async function getJose() {
+    if (!_jose) {
+        _jose = await import("jose");
+    }
+    return _jose;
+}
 
 class SsoService {
+    /**
+     * Verify a signed payload (JWS) against the SSO's JWKS
+     * @param {string} token - The compact JWS token
+     * @param {string} expectedAudience - The expected audience (app origin)
+     * @returns {Promise<object>} The verified payload
+     */
+    async verifySignedPayload(token, expectedAudience) {
+        const { jwtVerify, createRemoteJWKSet } = await getJose();
+        const JWKS = createRemoteJWKSet(new URL(SSO_JWKS_URL));
+
+        const { payload } = await jwtVerify(token, JWKS, {
+            audience: expectedAudience,
+        });
+
+        return payload;
+    }
+
     /**
      * Validate session token with SSO Backend
      * @param {string} sessionToken - JWT token from cookie
