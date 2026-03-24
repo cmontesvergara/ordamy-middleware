@@ -1,26 +1,26 @@
-const express = require("express");
-const cors = require("cors");
-const cookieParser = require("cookie-parser");
-const { FRONTEND_URL, APP_ID } = require("./config/env");
+import express from "express";
+import cors from "cors";
+import cookieParser from "cookie-parser";
+import { FRONTEND_URL, APP_ID  } from "./config/env.js";
 
 // SSO Routes (from template)
-const ssoAuthRoutes = require("./routes/ssoAuth.routes");
-const ssoSyncRoutes = require("./routes/ssoSync.routes");
+import ssoAuthRoutes from "./routes/ssoAuth.routes.js";
+import ssoSyncRoutes from "./routes/ssoSync.routes.js";
 
 // Business Routes
-const customerRoutes = require("./routes/customer.routes");
-const productRoutes = require("./routes/product.routes");
-const materialRoutes = require("./routes/material.routes");
-const orderRoutes = require("./routes/order.routes");
-const expenseRoutes = require("./routes/expense.routes");
-const accountRoutes = require("./routes/account.routes");
-const paymentRoutes = require("./routes/payment.routes");
-const settingsRoutes = require("./routes/settings.routes");
-const reportRoutes = require("./routes/report.routes");
+import customerRoutes from "./routes/customer.routes.js";
+import productRoutes from "./routes/product.routes.js";
+import materialRoutes from "./routes/material.routes.js";
+import orderRoutes from "./routes/order.routes.js";
+import expenseRoutes from "./routes/expense.routes.js";
+import accountRoutes from "./routes/account.routes.js";
+import paymentRoutes from "./routes/payment.routes.js";
+import settingsRoutes from "./routes/settings.routes.js";
+import reportRoutes from "./routes/report.routes.js";
 
 // Middlewares
-const ssoAuthMiddleware = require("./middlewares/ssoAuth.middleware");
-const tenantScope = require("./middlewares/tenantScope.middleware");
+import ssoAuthMiddleware from "./middlewares/ssoAuth.middleware.js";
+import tenantScope from "./middlewares/tenantScope.middleware.js";
 
 const app = express();
 
@@ -58,4 +58,4 @@ app.get("/health", (req, res) => {
     });
 });
 
-module.exports = app;
+export default app;

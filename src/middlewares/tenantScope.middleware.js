@@ -1,4 +1,4 @@
-const prisma = require("../config/prisma");
+import prisma from "../config/prisma.js";
 
 /**
  * Middleware to inject tenantId scoping into Prisma queries.
@@ -6,7 +6,7 @@ const prisma = require("../config/prisma");
  *
  * Requires req.tenant.tenantId to be set by ssoAuth middleware.
  */
-function tenantScope(req, res, next) {
+export default function tenantScope(req, res, next) {
     if (!req.tenant || !req.tenant.localId) {
         return res.status(403).json({ error: "Tenant context not found" });
     }
@@ -62,4 +62,4 @@ function tenantScope(req, res, next) {
     next();
 }
 
-module.exports = tenantScope;
+

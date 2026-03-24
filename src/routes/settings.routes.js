@@ -1,5 +1,5 @@
-const express = require("express");
-const rbac = require("../middlewares/rbac.middleware");
+import express from "express";
+import rbac from "../middlewares/rbac.middleware.js";
 
 const router = express.Router();
 
@@ -268,4 +268,4 @@ router.put("/financial", rbac("settings", "update"), async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

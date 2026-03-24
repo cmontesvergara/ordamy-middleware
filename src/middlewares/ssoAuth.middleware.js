@@ -1,10 +1,10 @@
-const { ssoAuthMiddleware } = require("@bigso/auth-sdk/express");
-const { ssoClient } = require("../config/ssoClient");
-const { COOKIE_NAME, NODE_ENV, COOKIE_DOMAIN } = require("../config/env");
-const prisma = require("../config/prisma");
+import { ssoAuthMiddleware } from "@bigso/auth-sdk/express";
+import { ssoClient } from "../config/ssoClient.js";
+import { COOKIE_NAME, NODE_ENV, COOKIE_DOMAIN } from "../config/env.js";
+import prisma from "../config/prisma.js";
 
 // Export an instance of the SDK's middleware with our custom DB sync logic
-module.exports = ssoAuthMiddleware({
+export default ssoAuthMiddleware({
     ssoClient,
     cookieName: COOKIE_NAME,
     cookieDomain: COOKIE_DOMAIN,

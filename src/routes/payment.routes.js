@@ -1,6 +1,6 @@
-const express = require("express");
-const rbac = require("../middlewares/rbac.middleware");
-const { getDayBounds } = require("../utils/date.util");
+import express from "express";
+import rbac from "../middlewares/rbac.middleware.js";
+import { getDayBounds  } from "../utils/date.util.js";
 
 const router = express.Router();
 
@@ -360,4 +360,4 @@ router.delete("/:id", rbac("payments", "delete"), async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

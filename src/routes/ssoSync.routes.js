@@ -1,5 +1,5 @@
-const { createSsoSyncRouter } = require("@bigso/auth-sdk/express");
-const { APP_ID, NODE_ENV, SSO_BACKEND_URL } = require("../config/env");
+import { createSsoSyncRouter  } from "@bigso/auth-sdk/express";
+import { APP_ID, NODE_ENV, SSO_BACKEND_URL  } from "../config/env.js";
 
 // Ordamy RBAC Resources
 const APP_RESOURCES = [
@@ -36,7 +36,7 @@ const APP_RESOURCES = [
     { resource: "settings", action: "delete", description: "Eliminar config (medios pago, categorías, impuestos, proveedores)" },
 ];
 
-module.exports = createSsoSyncRouter({
+export default createSsoSyncRouter({
     resources: APP_RESOURCES,
     appId: APP_ID,
     ssoBackendUrl: SSO_BACKEND_URL,

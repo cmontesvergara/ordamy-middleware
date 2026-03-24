@@ -1,8 +1,8 @@
-const { createSsoAuthRouter } = require("@bigso/auth-sdk/express");
-const { ssoClient } = require("../config/ssoClient");
-const { COOKIE_NAME, COOKIE_DOMAIN, NODE_ENV, FRONTEND_URL } = require("../config/env");
+import { createSsoAuthRouter  } from "@bigso/auth-sdk/express";
+import { ssoClient  } from "../config/ssoClient.js";
+import { COOKIE_NAME, COOKIE_DOMAIN, NODE_ENV, FRONTEND_URL  } from "../config/env.js";
 
-module.exports = createSsoAuthRouter({
+export default createSsoAuthRouter({
     ssoClient,
     frontendUrl: FRONTEND_URL,
     cookieName: COOKIE_NAME,

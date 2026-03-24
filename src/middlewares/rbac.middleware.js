@@ -6,7 +6,7 @@
  * This checks req.ssoSession for the user's permissions array.
  * Permissions come from SSO Core and follow the format { resource, action }.
  */
-function rbac(resource, action) {
+export default function rbac(resource, action) {
     return (req, res, next) => {
         try {
             const session = req.ssoSession;
@@ -41,4 +41,4 @@ function rbac(resource, action) {
     };
 }
 
-module.exports = rbac;
+

@@ -9,7 +9,7 @@
  * @param {string} timeZone IANA Timezone string (e.g. 'America/Bogota')
  * @returns {object} { dateUsed: 'YYYY-MM-DD', startOfDay: Date, endOfDay: Date }
  */
-function getDayBounds(dateString, timeZone) {
+export function getDayBounds(dateString, timeZone) {
     const tz = timeZone || 'UTC';
 
     let targetDateString = dateString;
@@ -56,7 +56,7 @@ function getDayBounds(dateString, timeZone) {
  * @param {string} timeZone IANA Timezone string (e.g. 'America/Bogota')
  * @returns {object} { yearAndMonth: 'YYYY-MM', startOfMonth: Date, endOfMonth: Date }
  */
-function getMonthBounds(year, month, timeZone) {
+export function getMonthBounds(year, month, timeZone) {
     const tz = timeZone || 'UTC';
 
     let targetYear = year ? parseInt(year) : null;
@@ -121,7 +121,4 @@ function getMonthBounds(year, month, timeZone) {
     };
 }
 
-module.exports = {
-    getDayBounds,
-    getMonthBounds
-};
+

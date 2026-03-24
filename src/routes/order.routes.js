@@ -1,7 +1,7 @@
-const express = require("express");
-const rbac = require("../middlewares/rbac.middleware");
-const { getDayBounds } = require("../utils/date.util");
-const axios = require("axios");
+import express from "express";
+import rbac from "../middlewares/rbac.middleware.js";
+import { getDayBounds  } from "../utils/date.util.js";
+import axios from "axios";
 
 const router = express.Router();
 
@@ -535,4 +535,4 @@ router.get("/:id/pdf", rbac("orders", "read"), async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

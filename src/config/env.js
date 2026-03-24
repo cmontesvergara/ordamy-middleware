@@ -1,17 +1,19 @@
-const dotenv = require("dotenv");
-const path = require("path");
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load .env
 dotenv.config({ path: path.join(__dirname, "../../.env") });
 
-module.exports = {
-    PORT: process.env.PORT || 4300,
-    SSO_BACKEND_URL: process.env.SSO_BACKEND_URL || "http://localhost:3000",
-    SSO_JWKS_URL: process.env.SSO_JWKS_URL || `${process.env.SSO_BACKEND_URL || "http://localhost:3000"}/.well-known/jwks.json`,
-    FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:4200",
-    APP_ID: process.env.APP_ID || "ordamy",
-    COOKIE_NAME: process.env.COOKIE_NAME || "bigapp-session-ordamy",
-    COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || ".bigso.co",
-    NODE_ENV: process.env.NODE_ENV || "development",
-    DATABASE_URL: process.env.DATABASE_URL,
-};
+export const PORT = process.env.PORT || 4300;
+export const SSO_BACKEND_URL = process.env.SSO_BACKEND_URL || "http://localhost:3000";
+export const SSO_JWKS_URL = process.env.SSO_JWKS_URL || `${process.env.SSO_BACKEND_URL || "http://localhost:3000"}/.well-known/jwks.json`;
+export const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
+export const APP_ID = process.env.APP_ID || "ordamy";
+export const COOKIE_NAME = process.env.COOKIE_NAME || "bigapp-session-ordamy";
+export const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".bigso.co";
+export const NODE_ENV = process.env.NODE_ENV || "development";
+export const DATABASE_URL = process.env.DATABASE_URL;

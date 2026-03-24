@@ -1,5 +1,5 @@
-const app = require("./app");
-const { PORT, APP_ID, FRONTEND_URL, SSO_BACKEND_URL, COOKIE_NAME, NODE_ENV } = require("./config/env");
+import app from "./app.js";
+import { PORT, APP_ID, FRONTEND_URL, SSO_BACKEND_URL, COOKIE_NAME, NODE_ENV  } from "./config/env.js";
 
 app.listen(PORT, () => {
     console.log("");
