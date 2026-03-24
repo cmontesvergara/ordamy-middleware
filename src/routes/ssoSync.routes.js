@@ -1,8 +1,5 @@
-const express = require("express");
-const ssoSyncGuardMiddleware = require("../middlewares/ssoSyncGuard.middleware");
-const { APP_ID } = require("../config/env");
-
-const router = express.Router();
+const { createSsoSyncRouter } = require("@bigso/auth-sdk/express");
+const { APP_ID, NODE_ENV, SSO_BACKEND_URL } = require("../config/env");
 
 // Ordamy RBAC Resources
 const APP_RESOURCES = [
@@ -39,25 +36,10 @@ const APP_RESOURCES = [
     { resource: "settings", action: "delete", description: "Eliminar config (medios pago, categorías, impuestos, proveedores)" },
 ];
 
-/**
- * GET /api/sso/resources
- * Expose resources for SSO synchronization (Pull Model)
- */
-router.get("/resources", ssoSyncGuardMiddleware, async (req, res) => {
-    try {
-        res.json({
-            success: true,
-            resources: APP_RESOURCES,
-            meta: {
-                appId: APP_ID,
-                count: APP_RESOURCES.length,
-                timestamp: new Date().toISOString(),
-            },
-        });
-    } catch (error) {
-        console.error("❌ Error in sync endpoint:", error.message);
-        res.status(500).json({ error: error.message });
-    }
+module.exports = createSsoSyncRouter({
+    resources: APP_RESOURCES,
+    appId: APP_ID,
+    ssoBackendUrl: SSO_BACKEND_URL,
+    isProduction: NODE_ENV === "production"
 });
 
-module.exports = router;
