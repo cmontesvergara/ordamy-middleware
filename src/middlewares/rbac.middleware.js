@@ -1,26 +1,15 @@
-/**
- * RBAC middleware to validate resource:action permissions from SSO session.
- * 
- * Usage: rbac("orders", "create")
- * 
- * This checks req.ssoSession for the user's permissions array.
- * Permissions come from SSO Core and follow the format { resource, action }.
- */
 export default function rbac(resource, action) {
     return (req, res, next) => {
         try {
-            const session = req.ssoSession;
-
-            if (!session) {
+            if (!req.tokenPayload) {
                 return res.status(401).json({ error: "No session found" });
             }
 
-            // SuperAdmins bypass all RBAC checks
-            if (session.user?.isSuperAdmin) {
+            if (req.tokenPayload.systemRole === 'super_admin' || req.tokenPayload.systemRole === 'system_admin') {
                 return next();
             }
 
-            const permissions = session.tenant?.permissions || [];
+            const permissions = req.tenant?.permissions || [];
 
             const hasPermission = permissions.some(
                 (p) => p.resource === resource && p.action === action
@@ -35,10 +24,8 @@ export default function rbac(resource, action) {
 
             next();
         } catch (error) {
-            console.error("❌ RBAC Middleware Error:", error.message);
+            console.error("RBAC Middleware Error:", error.message);
             res.status(500).json({ error: "Internal authorization error" });
         }
     };
 }
-
-

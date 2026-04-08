@@ -1,5 +1,5 @@
 import app from "./app.js";
-import { PORT, APP_ID, FRONTEND_URL, SSO_BACKEND_URL, COOKIE_NAME, NODE_ENV  } from "./config/env.js";
+import { PORT, APP_ID, FRONTEND_URL, SSO_BACKEND_URL, NODE_ENV } from "./config/env.js";
 
 app.listen(PORT, () => {
     console.log("");
@@ -10,13 +10,15 @@ app.listen(PORT, () => {
     console.log(`   Port:         ${PORT}`);
     console.log(`   Frontend:     ${FRONTEND_URL}`);
     console.log(`   SSO Backend:  ${SSO_BACKEND_URL}`);
-    console.log(`   Cookie Name:  ${COOKIE_NAME}`);
+    console.log(`   Auth Mode:    Bearer JWT`);
     console.log(`   Environment:  ${NODE_ENV}`);
     console.log("   ========================================");
     console.log("");
     console.log("   SSO Endpoints:");
     console.log("   POST   /api/auth/exchange");
+    console.log("   POST   /api/auth/exchange-v2");
     console.log("   GET    /api/auth/session");
+    console.log("   POST   /api/auth/refresh");
     console.log("   POST   /api/auth/logout");
     console.log("   GET    /api/sso/resources");
     console.log("");
