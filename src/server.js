@@ -1,5 +1,15 @@
 import app from "./app.js";
 import { PORT, APP_ID, FRONTEND_URL, SSO_BACKEND_URL, NODE_ENV } from "./config/env.js";
+import { initRedisWithPing } from "./config/redis.js";
+
+// Initialize Redis connection before starting server
+initRedisWithPing().then((redisReady) => {
+    if (redisReady) {
+        console.log("   Redis Cache:    Enabled ✅");
+    } else {
+        console.log("   Redis Cache:    Disabled (fallback to SSO)");
+    }
+});
 
 app.listen(PORT, () => {
     console.log("");

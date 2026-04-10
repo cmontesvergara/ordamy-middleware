@@ -8,12 +8,13 @@ import {
 /**
  * Redis client instance
  * Configured with auto-reconnection and error handling
+ * Aligned with sso-core implementation pattern
  */
-let redis = null;
-let isConnected = false;
+let redisInstance = null;
 
 /**
  * Initialize Redis connection
+ * Creates client and verifies connection with ping
  * @returns {Redis|null} Redis client or null if not configured
  */
 export function initRedis() {
@@ -22,52 +23,74 @@ export function initRedis() {
         return null;
     }
 
-    if (redis) {
-        return redis;
+    if (redisInstance) {
+        return redisInstance;
     }
 
     try {
         const options = {
             host: REDIS_HOST,
             port: REDIS_PORT,
+            maxRetriesPerRequest: 3,
+            enableReadyCheck: true,
             retryStrategy: (times) => {
                 const delay = Math.min(times * 50, 2000);
                 return delay;
             },
-            maxRetriesPerRequest: 3,
-            enableReadyCheck: true,
-            lazyConnect: true,
+            // Note: lazyConnect is false by default (same as sso-core)
         };
 
         if (REDIS_PASSWORD) {
             options.password = REDIS_PASSWORD;
         }
 
-        redis = new Redis(options);
+        redisInstance = new Redis(options);
 
-        redis.on("connect", () => {
-            console.log("[Redis] Connected successfully");
-            isConnected = true;
-        });
-
-        redis.on("error", (err) => {
+        redisInstance.on("error", (err) => {
             console.error("[Redis] Connection error:", err.message);
-            isConnected = false;
         });
 
-        redis.on("close", () => {
+        redisInstance.on("connect", () => {
+            console.log("[Redis] Connected");
+        });
+
+        redisInstance.on("ready", () => {
+            console.log("[Redis] Ready");
+        });
+
+        redisInstance.on("close", () => {
             console.warn("[Redis] Connection closed");
-            isConnected = false;
         });
 
-        redis.on("reconnecting", () => {
+        redisInstance.on("reconnecting", () => {
             console.log("[Redis] Reconnecting...");
         });
 
-        return redis;
+        return redisInstance;
     } catch (error) {
         console.error("[Redis] Failed to initialize:", error.message);
         return null;
+    }
+}
+
+/**
+ * Initialize Redis and verify connection with ping
+ * Call this at application startup
+ * @returns {Promise<boolean>} true if Redis is ready, false otherwise
+ */
+export async function initRedisWithPing() {
+    const redis = initRedis();
+    if (!redis) {
+        return false;
+    }
+
+    try {
+        await redis.ping();
+        console.log("[Redis] Initialized successfully");
+        return true;
+    } catch (error) {
+        console.error("[Redis] Failed to ping:", error.message);
+        return false;
     }
 }
 
@@ -77,33 +100,33 @@ export function initRedis() {
  * @returns {Redis|null}
  */
 export function getRedis() {
-    if (!redis) {
+    if (!redisInstance) {
         return initRedis();
     }
-    return redis;
+    return redisInstance;
 }
 
 /**
  * Check if Redis is connected and ready
+ * Aligned with sso-core: checks status === 'ready'
  * @returns {boolean}
  */
 export function isRedisReady() {
-    return redis !== null && isConnected && redis.status === "ready";
+    return redisInstance !== null && redisInstance.status === "ready";
 }
 
 /**
  * Graceful shutdown - close Redis connection
  */
 export async function closeRedis() {
-    if (redis) {
-        await redis.quit();
-        redis = null;
-        isConnected = false;
-        console.log("[Redis] Connection closed gracefully");
+    if (redisInstance) {
+        await redisInstance.quit();
+        redisInstance = null;
+        console.log("[Redis] Disconnected");
     }
 }
 
-// Initialize on module load
+// Initialize on module load (creates instance but doesn't block)
 initRedis();
 
-export default redis;
+export default redisInstance;
