@@ -16,7 +16,7 @@
     "license": "ISC",
     "description": "Ordamy business middleware — federated with BigSo SSO",
     "dependencies": {
-        "@bigso/auth-sdk": "0.5.2",
+        "@bigso/auth-sdk": "0.5.3",
         "@prisma/client": "^6.5.0",
         "axios": "^1.13.5",
         "cors": "^2.8.6",
