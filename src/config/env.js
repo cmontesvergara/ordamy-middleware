@@ -15,3 +15,7 @@ export const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:4200";
 export const APP_ID = process.env.APP_ID || "ordamy";
 export const NODE_ENV = process.env.NODE_ENV || "development";
 export const DATABASE_URL = process.env.DATABASE_URL;
+
+// Cookie configuration for refresh token
+export const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".bigso.co";
+export const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "strict";
