@@ -1,60 +1,10 @@
 import { Router } from "express";
-import { ssoAuthMiddleware } from "@bigso/auth-sdk/express";
+import { COOKIE_DOMAIN, COOKIE_SAMESITE, FRONTEND_URL } from "../config/env.js";
 import { ssoClient } from "../config/ssoClient.js";
-import { FRONTEND_URL, COOKIE_DOMAIN, COOKIE_SAMESITE } from "../config/env.js";
-import prisma from "../config/prisma.js";
-import { fetchPermissionsFromSSO } from "../services/permissions.service.js";
-
-const authMiddleware = ssoAuthMiddleware({ ssoClient });
+import { authMiddleware } from "../middlewares/ssoAuth.middleware.js";
 
 const router = Router();
 
-router.post("/exchange", async (req, res) => {
-    try {
-        const { code, codeVerifier } = req.body;
-        if (!code || !codeVerifier) {
-            return res.status(400).json({ error: 'code and codeVerifier are required' });
-        }
-
-        const ssoResponse = await ssoClient.exchangeCode(code, codeVerifier);
-        
-        console.log(`✅ [Ordamy] User ${ssoResponse.user.email} logged in via code exchange.`);
-
-        // Extraer refreshToken de la respuesta del SSO
-        const { accessToken, refreshToken, expiresIn } = ssoResponse.tokens;
-        
-        if (!refreshToken) {
-            console.error('[Ordamy] No refresh token received from SSO');
-            return res.status(500).json({ error: 'Authentication error: no refresh token' });
-        }
-        
-        // Crear cookie PROPIA del middleware (httpOnly, secure)
-        res.cookie('ordamy_refresh_token', refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: COOKIE_SAMESITE,
-            path: '/api/auth/refresh',
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
-            domain: COOKIE_DOMAIN
-        });
-        
-        console.log(`[Ordamy] Cookie set: domain=${COOKIE_DOMAIN}, path=/api/auth/refresh, sameSite=${COOKIE_SAMESITE}`);
-        
-        // Devolver al frontend SIN el refreshToken (queda en cookie httpOnly)
-        res.json({
-            success: true,
-            tokens: {
-                accessToken,
-                expiresIn
-            },
-            user: ssoResponse.user,
-            tenant: ssoResponse.tenant,
-        });
-    } catch (error) {
-        console.error('[Ordamy] Error exchanging code:', error.message);
-        res.status(401).json({ error: error.message || 'Failed to exchange authorization code' });
-    }
-});
 
 router.post("/exchange-v2", async (req, res) => {
     try {
@@ -113,55 +63,62 @@ router.post("/exchange-v2", async (req, res) => {
     }
 });
 
+/**
+ * GET /api/auth/session
+ * 
+ * Devuelve la información de la sesión del usuario autenticado.
+ * 
+ * El middleware authMiddleware ya ha:
+ * - Validado el JWT
+ * - Sincronizado el tenant con la base de datos local
+ * - Cargado los permisos desde el SSO
+ * - Enriquecido req.user y req.tenant
+ * 
+ * Esta ruta solo construye la respuesta JSON.
+ * 
+ * Si el token está próximo a expirar, se incluye la flag `refreshRequired: true`
+ * para que el frontend llame a POST /api/auth/refresh explícitamente.
+ */
 router.get("/session", authMiddleware, async (req, res) => {
     try {
-        const accessToken = req.headers.authorization?.substring(7) || '';
-        const primaryTenant = req.tokenPayload?.tenants?.[0];
-
-        let permissions = [];
-        if (primaryTenant) {
-            permissions = await fetchPermissionsFromSSO(accessToken, primaryTenant.role);
+        // Verificar que el middleware haya establecido el usuario
+        // Si no está presente, el middleware ya devolvió 401/403
+        if (!req.user) {
+            return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        if (primaryTenant) {
-            const ssoId = primaryTenant.id;
-            const localTenant = await prisma.tenant.upsert({
-                where: { ssoId },
-                update: { name: primaryTenant.name || '', slug: primaryTenant.slug || '' },
-                create: { ssoId, name: primaryTenant.name || '', slug: primaryTenant.slug || '' }
-            });
-
-            req.tenant = {
-                ...primaryTenant,
-                localId: localTenant.id
-            };
-        }
-
+        // Headers anti-caché (seguridad)
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
 
-        res.json({
+        // Construir respuesta desde datos del middleware
+        const response = {
             success: true,
-            user: {
-                userId: req.tokenPayload.sub,
-                email: '',
-                firstName: '',
-                lastName: '',
-                isSuperAdmin: req.tokenPayload.systemRole === 'super_admin' || req.tokenPayload.systemRole === 'superadmin',
-            },
-            tenant: req.tenant ? {
+            user: req.user,
+        };
+        // Incluir tenant solo si existe
+        if (req.tenant) {
+            response.tenant = {
                 tenantId: req.tenant.id,
-                name: req.tenant.name || '',
-                slug: req.tenant.slug || '',
+                localId: req.tenant.localId,
+                name: req.tenant.name,
+                slug: req.tenant.slug,
                 role: req.tenant.role,
-                permissions,
-            } : undefined,
-            tokenPayload: req.tokenPayload,
-        });
+                permissions: req.tenant.permissions,
+            };
+        }
+
+        // Si el middleware marcó que se requiere refresh, informar al frontend
+        if (res.locals.refreshRequired) {
+            response.refreshRequired = true;
+            console.log('[Ordamy] Session response includes refreshRequired flag');
+        }
+
+        res.json(response);
     } catch (error) {
-        console.error('[Ordamy] Session error:', error.message);
-        res.status(500).json({ error: 'Session resolution failed' });
+        console.error('[Ordamy] Session route error:', error.message);
+        res.status(500).json({ error: 'Failed to retrieve session' });
     }
 });
 

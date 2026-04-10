@@ -19,7 +19,7 @@ import settingsRoutes from "./routes/settings.routes.js";
 import reportRoutes from "./routes/report.routes.js";
 
 // Middlewares
-import ssoAuthMiddleware from "./middlewares/ssoAuth.middleware.js";
+import { authMiddleware } from "./middlewares/ssoAuth.middleware.js";
 import tenantScope from "./middlewares/tenantScope.middleware.js";
 
 const app = express();
@@ -39,15 +39,15 @@ app.use("/api/sso", ssoSyncRoutes);
 
 // ─── Business Routes (protected) ─────────────────────────
 // All business routes go through SSO auth + tenant scope
-app.use("/api/customers", ssoAuthMiddleware, tenantScope, customerRoutes);
-app.use("/api/products", ssoAuthMiddleware, tenantScope, productRoutes);
-app.use("/api/materials", ssoAuthMiddleware, tenantScope, materialRoutes);
-app.use("/api/orders", ssoAuthMiddleware, tenantScope, orderRoutes);
-app.use("/api/expenses", ssoAuthMiddleware, tenantScope, expenseRoutes);
-app.use("/api/accounts", ssoAuthMiddleware, tenantScope, accountRoutes);
-app.use("/api/payments", ssoAuthMiddleware, tenantScope, paymentRoutes);
-app.use("/api/settings", ssoAuthMiddleware, tenantScope, settingsRoutes);
-app.use("/api/reports", ssoAuthMiddleware, tenantScope, reportRoutes);
+app.use("/api/customers", authMiddleware, tenantScope, customerRoutes);
+app.use("/api/products", authMiddleware, tenantScope, productRoutes);
+app.use("/api/materials", authMiddleware, tenantScope, materialRoutes);
+app.use("/api/orders", authMiddleware, tenantScope, orderRoutes);
+app.use("/api/expenses", authMiddleware, tenantScope, expenseRoutes);
+app.use("/api/accounts", authMiddleware, tenantScope, accountRoutes);
+app.use("/api/payments", authMiddleware, tenantScope, paymentRoutes);
+app.use("/api/settings", authMiddleware, tenantScope, settingsRoutes);
+app.use("/api/reports", authMiddleware, tenantScope, reportRoutes);
 
 // ─── Health Check ─────────────────────────────────────────
 app.get("/health", (req, res) => {
