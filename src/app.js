@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { FRONTEND_URL, APP_ID } from "./config/env.js";
 
 // SSO Routes (from template)
@@ -30,6 +31,7 @@ app.use(
     })
 );
 app.use(express.json());
+app.use(cookieParser());  // Parse cookies from requests
 
 // ─── SSO Core Routes ─────────────────────────────────────
 app.use("/api/auth", ssoAuthRoutes);
