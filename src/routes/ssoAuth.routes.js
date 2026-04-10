@@ -49,7 +49,7 @@ router.post("/exchange", async (req, res) => {
 
 router.post("/exchange-v2", async (req, res) => {
     try {
-        const { payload } = req.body;
+        const { payload, codeVerifier: codeVerifierFromBody } = req.body;
         if (!payload) {
             return res.status(400).json({ error: 'Signed payload is required' });
         }
@@ -59,12 +59,12 @@ router.post("/exchange-v2", async (req, res) => {
             return res.status(400).json({ error: 'No authorization code found in payload' });
         }
 
-        const codeVerifier = verified.code_verifier;
-        if (!codeVerifier) {
-            return res.status(400).json({ error: 'code_verifier is required for PKCE exchange' });
+        const verifier = codeVerifierFromBody || verified.code_verifier;
+        if (!verifier) {
+            return res.status(400).json({ error: 'codeVerifier is required for PKCE exchange' });
         }
 
-        const ssoResponse = await ssoClient.exchangeCode(verified.code, codeVerifier);
+        const ssoResponse = await ssoClient.exchangeCode(verified.code, verifier);
 
         console.log(`✅ [Ordamy] User ${ssoResponse.user.email} logged in via SSO.`);
 
