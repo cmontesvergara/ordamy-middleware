@@ -1,26 +1,11 @@
 import { Router } from "express";
 import { ssoAuthMiddleware } from "@bigso/auth-sdk/express";
 import { ssoClient } from "../config/ssoClient.js";
-import { FRONTEND_URL, SSO_BACKEND_URL, APP_ID } from "../config/env.js";
+import { FRONTEND_URL } from "../config/env.js";
 import prisma from "../config/prisma.js";
+import { fetchPermissionsFromSSO } from "../services/permissions.service.js";
 
 const authMiddleware = ssoAuthMiddleware({ ssoClient });
-
-async function fetchPermissionsFromSSO(accessToken, roleName) {
-    try {
-        const url = `${SSO_BACKEND_URL}/api/v2/role/${encodeURIComponent(roleName)}/permission?appId=${APP_ID}`;
-        const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!response.ok) return [];
-        const data = await response.json();
-        const allPerms = data.permissions || [];
-        return allPerms.filter(p => p.appId === APP_ID);
-    } catch (error) {
-        console.error("[Ordamy] Failed to fetch permissions from SSO Core:", error.message);
-        return [];
-    }
-}
 
 const router = Router();
 
