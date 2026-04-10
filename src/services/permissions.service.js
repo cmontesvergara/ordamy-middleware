@@ -1,102 +1,72 @@
-import { SSO_BACKEND_URL, APP_ID } from "../config/env.js";
+import { SSO_BACKEND_URL, APP_ID, PERMISSIONS_CACHE_ENABLED } from "../config/env.js";
+import { 
+    getPermissionsFromCache, 
+    setPermissionsInCache 
+} from "./permissionsCache.service.js";
 
 /**
- * TODO: OPTIMIZACIÓN CRÍTICA - CACHE DE PERMISOS
+ * Fetches permissions from SSO Core for a given role with Redis caching
  * 
- * PROBLEMA: Cada request que pasa por authMiddleware hace una llamada HTTP
- * al SSO para obtener permisos. En escenarios de alta carga, esto genera:
- * - Latencia adicional (~100-300ms por request)
- * - Carga innecesaria en el servicio SSO
- * - Posible degradación cuando el SSO está lento
+ * Flow:
+ * 1. Try to get from Redis cache (if enabled)
+ * 2. If cache miss or Redis unavailable, fetch from SSO
+ * 3. Save to Redis cache (silently, don't fail if Redis error)
  * 
- * IMPACTO ACTUAL:
- * - Con ~100 requests/minuto = ~100 llamadas HTTP al SSO solo para permisos
- * - Cada llamada añade 100-300ms de latencia
- * - Usuarios con el mismo rol consultan repetidamente
- * 
- * SOLUCIÓN PROPUESTA: Implementar cache de permisos por role
- * 
- * OPCIÓN 1 - Cache en memoria (Node.js):
- * --------------------------------------
- * const permissionsCache = new Map();
- * // Key: `${roleName}:${APP_ID}`
- * // Value: { permissions: [], timestamp: Date }
- * // TTL: 5 minutos
- * 
- * Implementación:
- * async function fetchPermissionsFromSSO(accessToken, roleName) {
- *     const cacheKey = `${roleName}:${APP_ID}`;
- *     const cached = permissionsCache.get(cacheKey);
- *     
- *     if (cached && (Date.now() - cached.timestamp) < 5 * 60 * 1000) {
- *         return cached.permissions;
- *     }
- *     
- *     const permissions = await fetchFromSSO(...);
- *     permissionsCache.set(cacheKey, { permissions, timestamp: Date.now() });
- *     return permissions;
- * }
- * 
- * OPCIÓN 2 - Cache distribuido (Redis):
- * -------------------------------------
- * // Si Ordamy escala a múltiples instancias, Redis permite
- * // compartir cache entre nodos
- * 
- * Implementación:
- * const redis = new Redis(process.env.REDIS_URL);
- * 
- * async function fetchPermissionsFromSSO(accessToken, roleName) {
- *     const cacheKey = `permissions:${roleName}:${APP_ID}`;
- *     const cached = await redis.get(cacheKey);
- *     
- *     if (cached) {
- *         return JSON.parse(cached);
- *     }
- *     
- *     const permissions = await fetchFromSSO(...);
- *     await redis.setex(cacheKey, 300, JSON.stringify(permissions)); // 5 min TTL
- *     return permissions;
- * }
- * 
- * OPCIÓN 3 - Cache en JWT (preferido a largo plazo):
- * -------------------------------------------------
- * // Incluir permissions en el token JWT durante el login/exchange
- * // Elimina completamente la necesidad de llamar al SSO
- * // Requiere cambio en el SDK de SSO (@bigso/auth-sdk)
- * 
- * IMPACTO ESPERADO:
- * - Reducción de latencia: ~200ms por request
- * - Reducción de carga SSO: ~90% de requests (solo el primer request
- *   de cada rol necesitaría consultar al SSO)
- * 
- * CONSIDERACIONES:
- * - Cache TTL debe balancear frescura vs performance
- * - Si se implementa cache, considerar endpoint de invalidación manual
- *   para cuando un admin cambia permisos de un rol
- * - En entornos multi-instancia, cache en memoria no funciona (cada
- *   instancia tendría su propio cache)
- * 
- * PRIORIDAD: ALTA
- * ESTIMACIÓN: 4-8 horas de trabajo (Opción 1)
- *              8-16 horas de trabajo (Opción 2 con Redis)
- * 
- * NOTA: Actualmente sin cache, cada request autenticada genera:
- * 1. Validar JWT (local)
- * 2. Consultar permisos (HTTP al SSO) <- OPTIMIZAR ESTO
- * 3. Sync tenant (DB local)
- * 
- * La consulta #2 es el cuello de botella.
+ * @param {string} accessToken - The JWT access token
+ * @param {string} roleName - The role name to fetch permissions for
+ * @param {string} tenantId - The tenant ID (SSO ID) for cache key
+ * @returns {Promise<Array>} Array of permissions
  */
+export async function fetchPermissionsFromSSO(accessToken, roleName, tenantId) {
+    // Input validation
+    if (!roleName || !tenantId) {
+        console.warn("[Ordamy] fetchPermissionsFromSSO: roleName or tenantId missing");
+        return [];
+    }
+
+    // 1. Try to get from cache (if enabled)
+    if (PERMISSIONS_CACHE_ENABLED) {
+        try {
+            const cached = await getPermissionsFromCache(roleName, APP_ID, tenantId);
+            if (cached !== null) {
+                return cached;
+            }
+            // Cache miss - will fetch from SSO
+            console.log(`[Cache] Miss for role: ${roleName}, tenant: ${tenantId} - fetching from SSO`);
+        } catch (cacheError) {
+            // Log cache error but continue to SSO
+            console.warn(`[Cache] Error reading cache: ${cacheError.message}`);
+        }
+    }
+
+    // 2. Fetch from SSO
+    const permissions = await fetchFromSSODirect(accessToken, roleName);
+
+    // 3. Save to cache (silently, don't fail if cache error)
+    if (PERMISSIONS_CACHE_ENABLED && permissions.length > 0) {
+        try {
+            await setPermissionsInCache(roleName, APP_ID, tenantId, permissions);
+        } catch (cacheError) {
+            // Log but don't fail the request
+            console.warn(`[Cache] Error saving to cache: ${cacheError.message}`);
+        }
+    }
+
+    return permissions;
+}
 
 /**
- * Fetches permissions from SSO Core for a given role
+ * Direct fetch from SSO without caching
+ * Used internally when cache is disabled or on cache miss
+ * 
  * @param {string} accessToken - The JWT access token
  * @param {string} roleName - The role name to fetch permissions for
  * @returns {Promise<Array>} Array of permissions
  */
-export async function fetchPermissionsFromSSO(accessToken, roleName) {
+async function fetchFromSSODirect(accessToken, roleName) {
     try {
         const url = `${SSO_BACKEND_URL}/api/v2/role/${encodeURIComponent(roleName)}/permission?appId=${APP_ID}`;
+        
         const response = await fetch(url, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
@@ -116,3 +86,16 @@ export async function fetchPermissionsFromSSO(accessToken, roleName) {
         return [];
     }
 }
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use fetchPermissionsFromSSO with tenantId
+ */
+export async function fetchPermissionsFromSSOLegacy(accessToken, roleName) {
+    console.warn("[Ordamy] Deprecated: fetchPermissionsFromSSOLegacy called without tenantId. " +
+                 "Permissions will not be cached. Update caller to pass tenantId.");
+    return fetchFromSSODirect(accessToken, roleName);
+}
+
+// Export internal function for testing
+export { fetchFromSSODirect };

@@ -83,14 +83,14 @@ export const authMiddleware = [
                 return res.status(500).json({ error: "Failed to synchronize tenant data" });
             }
 
-            // 5. Cargar permisos desde SSO
-            // TODO: Optimizar con cache (ver TODO en permissions.service.js)
+            // 5. Cargar permisos desde SSO (con cache Redis)
             const accessToken = req.headers.authorization?.substring(7) || "";
             let permissions = [];
             
             if (primaryTenant.role && accessToken) {
                 try {
-                    permissions = await fetchPermissionsFromSSO(accessToken, primaryTenant.role);
+                    // Pasar tenantId (primaryTenant.id) para cachear permisos por tenant
+                    permissions = await fetchPermissionsFromSSO(accessToken, primaryTenant.role, primaryTenant.id);
                 } catch (permError) {
                     console.error("[Ordamy] Failed to fetch permissions from SSO:", permError.message);
                     // Opción A (estricta): Fallar la request

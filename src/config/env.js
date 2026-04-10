@@ -19,3 +19,10 @@ export const DATABASE_URL = process.env.DATABASE_URL;
 // Cookie configuration for refresh token
 export const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".bigso.co";
 export const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "strict";
+
+// Redis Configuration
+export const REDIS_HOST = process.env.REDIS_HOST;
+export const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+export const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379");
+export const PERMISSIONS_CACHE_TTL = parseInt(process.env.PERMISSIONS_CACHE_TTL || "900"); // 15 min default
+export const PERMISSIONS_CACHE_ENABLED = process.env.PERMISSIONS_CACHE_ENABLED !== "false"; // true by default
