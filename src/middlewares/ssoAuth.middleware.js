@@ -46,8 +46,13 @@ export const authMiddleware = [
                 return res.status(403).json({ error: "User has no tenant access" });
             }
 
-            // Tomar el tenant primario (primer elemento del array)
-            const primaryTenant = tenants[0];
+            // Determinar el tenant primario:
+            // Si el JWT tiene tenantId (desde exchange v2), usar ese
+            // Si no, fallback al primer tenant (login SSO Portal)
+            const selectedTenantId = payload.tenantId;
+            const primaryTenant = selectedTenantId 
+                ? tenants.find(t => t.id === selectedTenantId) || tenants[0]
+                : tenants[0];
 
             // 3. Detectar si el token está por expirar
             // Si expira en menos de REFRESH_THRESHOLD_MS, marcar para refresh
