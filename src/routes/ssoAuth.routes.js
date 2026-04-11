@@ -108,6 +108,10 @@ router.get("/session", authMiddleware, async (req, res) => {
                 permissions: req.tenant.permissions,
             };
         }
+        // Incluir lista completa de tenants para el selector multi-tenant
+        if (req.tokenPayload?.tenants) {
+            response.tenants = req.tokenPayload.tenants;
+        }
 
         // Si el middleware marcó que se requiere refresh, informar al frontend
         if (res.locals.refreshRequired) {
