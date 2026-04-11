@@ -28,6 +28,7 @@ export const authMiddleware = [
     sdkAuthMiddleware({ ssoClient }),
     async (req, res, next) => {
         try {
+            console.log("[Ordamy] Running authMiddleware :", req);
             if (!req.tokenPayload) {
                 return res.status(401).json({ error: "Invalid or missing authentication token" });
             }
