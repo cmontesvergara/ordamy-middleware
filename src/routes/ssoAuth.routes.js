@@ -99,14 +99,7 @@ router.get("/session", authMiddleware, async (req, res) => {
         };
         // Incluir tenant solo si existe
         if (req.tenant) {
-            response.tenant = {
-                tenantId: req.tenant.id,
-                localId: req.tenant.localId,
-                name: req.tenant.name,
-                slug: req.tenant.slug,
-                role: req.tenant.role,
-                permissions: req.tenant.permissions,
-            };
+            response.tenant = req.tenant;
         }
         // Incluir lista completa de tenants para el selector multi-tenant
         if (req.tokenPayload?.tenants) {

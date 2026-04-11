@@ -25,37 +25,22 @@ const REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
  * @returns {Array} Array de middlewares de Express
  */
 export const authMiddleware = [
-    // 1. Validar JWT usando el SDK
     sdkAuthMiddleware({ ssoClient }),
-    
-    // 2. Procesar datos del token y sincronizar
     async (req, res, next) => {
         try {
-            // Si el middleware del SDK no seteó tokenPayload, es inválido
             if (!req.tokenPayload) {
                 return res.status(401).json({ error: "Invalid or missing authentication token" });
             }
 
             const payload = req.tokenPayload;
             
-            // Verificar que el token tenga tenants
-            // Un usuario válido debe pertenecer al menos a un tenant
             const tenants = payload.tenants || [];
             if (tenants.length === 0) {
                 console.warn(`[Ordamy] User ${payload.sub} has no tenants assigned`);
                 return res.status(403).json({ error: "User has no tenant access" });
             }
 
-            // Determinar el tenant primario:
-            // Si el JWT tiene tenantId (desde exchange v2), usar ese
-            // Si no, fallback al primer tenant (login SSO Portal)
-            const selectedTenantId = payload.tenantId;
-            const primaryTenant = selectedTenantId 
-                ? tenants.find(t => t.id === selectedTenantId) || tenants[0]
-                : tenants[0];
 
-            // 3. Detectar si el token está por expirar
-            // Si expira en menos de REFRESH_THRESHOLD_MS, marcar para refresh
             if (payload.exp) {
                 const expirationTime = payload.exp * 1000; // Convertir de segundos a ms
                 const currentTime = Date.now();
@@ -66,21 +51,18 @@ export const authMiddleware = [
                     res.locals.refreshRequired = true;
                 }
             }
-
-            // 4. Sincronizar tenant con base de datos local
-            // Esto asegura que las foreign keys en las tablas de Ordamy funcionen
             let localTenant;
             try {
                 localTenant = await prisma.tenant.upsert({
-                    where: { ssoId: primaryTenant.id },
+                    where: { ssoId: req.tenant.id },
                     update: {
-                        name: primaryTenant.name || "",
-                        slug: primaryTenant.slug || ""
+                        name: req.tenant.name,
+                        slug: req.tenant.slug 
                     },
                     create: {
-                        ssoId: primaryTenant.id,
-                        name: primaryTenant.name || "",
-                        slug: primaryTenant.slug || ""
+                        ssoId: req.tenant.id,
+                        name: req.tenant.name,
+                        slug: req.tenant.slug
                     }
                 });
             } catch (dbError) {
@@ -88,40 +70,29 @@ export const authMiddleware = [
                 return res.status(500).json({ error: "Failed to synchronize tenant data" });
             }
 
-            // 5. Cargar permisos desde SSO (con cache Redis)
             const accessToken = req.headers.authorization?.substring(7) || "";
             let permissions = [];
             
-            if (primaryTenant.role && accessToken) {
+            if (req.tenant.role && accessToken) {
                 try {
-                    // Pasar tenantId (primaryTenant.id) para cachear permisos por tenant
-                    permissions = await fetchPermissionsFromSSO(accessToken, primaryTenant.role, primaryTenant.id);
+                    
+                    permissions = await fetchPermissionsFromSSO(accessToken, req.tenant.role, localTenant.id);
                 } catch (permError) {
                     console.error("[Ordamy] Failed to fetch permissions from SSO:", permError.message);
-                    // Opción A (estricta): Fallar la request
                     return res.status(500).json({ error: "Failed to load user permissions" });
-                    // Opción B (permissive): Continuar sin permisos
-                    // permissions = [];
                 }
             }
-
-            // 6. Enriquecer req con datos estructurados
-            // Similar a la estructura del middleware original
             req.user = {
-                userId: payload.sub,
+                ...req.user,
                 isSuperAdmin: payload.systemRole === "super_admin" || payload.systemRole === "superadmin"
             };
 
             req.tenant = {
-                id: primaryTenant.id,
+                ...req.tenant,
                 localId: localTenant.id,
-                name: primaryTenant.name || "",
-                slug: primaryTenant.slug || "",
-                role: primaryTenant.role || null,
                 permissions: permissions
             };
 
-            // Datos de autenticación adicionales (no expuestos al cliente)
             req.auth = {
                 accessToken: accessToken,
                 expiresAt: payload.exp ? new Date(payload.exp * 1000) : null

@@ -10,7 +10,13 @@ export default function rbac(resource, action) {
             }
 
             const permissions = req.tenant?.permissions || [];
-
+            if (permissions.length === 0) {
+                console.warn(`[Ordamy RBAC] User ${req.tokenPayload.sub} has no permissions in tenant ${req.tenant?.id}`);
+                return res.status(403).json({
+                    error: "Forbidden",
+                    message: "Not found any permissions for this tenant. Contact your administrator.",
+                });
+            }
             const hasPermission = permissions.some(
                 (p) => p.resource === resource && p.action === action
             );
