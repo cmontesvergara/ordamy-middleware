@@ -1,7 +1,7 @@
 # Stage 1: Build
 FROM node:20-alpine AS builder
 
-ARG CACHEBUST=0
+ARG CACHEBUST=1
 WORKDIR /app
 
 # OpenSSL es requerido por Prisma en Alpine
